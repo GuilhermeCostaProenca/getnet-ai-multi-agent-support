@@ -43,5 +43,7 @@ def test_challenge_scenarios(live_client, ac, message, intent, tool):
     assert body["intent"] == intent, body
     if intent == "product_knowledge":
         assert any("getnet" in s["url"] for s in body["sources"]), body
+    if intent == "general_info":
+        assert body["sources"], body
     if tool:
         assert tool in [t["name"] for t in body["tools_used"]], body

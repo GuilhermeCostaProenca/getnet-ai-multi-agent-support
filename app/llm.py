@@ -60,17 +60,26 @@ class OpenAIClient:
 
     def web_search(self, instructions: str, question: str) -> tuple[str, list[Source]]:
         resp = self._client.responses.create(
-            model=self._model, instructions=instructions, input=question, tools=[{"type": "web_search"}]
+            model=self._model, instructions=instructions, input=question, tools=[{"type": "web_search"}],
+            include=["web_search_call.action.sources"],
         )
-        sources: dict[str, Source] = {}
+        cited: dict[str, Source] = {}
+        consulted: dict[str, Source] = {}
         for item in resp.output:
-            if item.type != "message":
-                continue
-            for content in item.content:
-                for ann in getattr(content, "annotations", None) or []:
-                    if getattr(ann, "type", "") == "url_citation" and ann.url not in sources:
-                        sources[ann.url] = Source(title=ann.title or ann.url, url=ann.url)
-        return resp.output_text.strip(), list(sources.values())
+            if item.type == "message":
+                for content in item.content:
+                    for ann in getattr(content, "annotations", None) or []:
+                        if getattr(ann, "type", "") == "url_citation" and ann.url not in cited:
+                            cited[ann.url] = Source(title=ann.title or ann.url, url=ann.url)
+            elif item.type == "web_search_call":
+                for src in getattr(item.action, "sources", None) or []:
+                    # URL sources have `url`; provider data APIs (e.g. weather) have only `name`.
+                    url, name = getattr(src, "url", None), getattr(src, "name", None)
+                    key = url or f"api:{name or 'unknown'}"
+                    consulted.setdefault(key, Source(title=name or url or "web search", url=key))
+        # Prefer sources the model actually cited; otherwise report what the search consulted.
+        sources = list(cited.values()) or list(consulted.values())[:5]
+        return resp.output_text.strip(), sources
 
     def run_tools(
         self, instructions: str, user_input: str, tools: list[dict[str, Any]], execute: ToolExecutor
