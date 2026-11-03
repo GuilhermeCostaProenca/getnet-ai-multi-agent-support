@@ -25,6 +25,19 @@ def test_ac14_card_cpf_and_secret_are_redacted():
     assert not check.blocked
 
 
+def test_secret_requires_explicit_value():
+    assert check_input("my password is Abc123!").text == "my password [SECRET_REDACTED]"
+    assert check_input("PIN=4321").flags == ["pii_secret"]
+    assert check_input("senha: abcdef").text == "senha [SECRET_REDACTED]"
+
+
+def test_secret_keywords_in_normal_sentences_are_kept():
+    for msg in ["I forgot my password, how do I reset it?", "My machine asks for the PIN every time",
+                "Esqueci minha senha do app", "what is the password policy?", "the password is required"]:
+        check = check_input(msg)
+        assert check.text == msg and check.flags == [], msg
+
+
 def test_non_pii_numbers_are_kept():
     check = check_input("I sold 1234567890123 units? order 12345")
     assert check.flags == [] and check.text.startswith("I sold 1234567890123")

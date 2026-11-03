@@ -22,7 +22,12 @@ _INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
 _CARD_CANDIDATE_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
 _CPF_RE = re.compile(r"(?<!\d)\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d)")
-_SECRET_RE = re.compile(r"\b(senha|password|passwd|pin|cvv|cvc)\b\s*[:=é]?\s*\S+", re.IGNORECASE)
+# Requires an explicit value: "keyword: value" / "keyword = value", or "keyword is/é value" when the
+# value contains a digit. Ordinary sentences ("I forgot my password", "the password is required")
+# are not redacted.
+_SECRET_RE = re.compile(
+    r"\b(senha|password|passwd|pin|cvv|cvc)\b(?:\s*[:=]\s*\S+|\s+(?:é|is)\s+(?=\S*\d)\S+)", re.IGNORECASE
+)
 
 
 @dataclass
