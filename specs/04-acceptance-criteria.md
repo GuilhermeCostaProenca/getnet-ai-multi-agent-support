@@ -27,6 +27,8 @@ Test names carry the AC id (e.g. `test_ac11_...`). **U** = deterministic test wi
 | AC-25 | "I forgot my password, how do I reset it?" | **not** redacted (no false-positive PII) | GR-PII-01 | U |
 | AC-26 | Request at 22:30 in São Paulo (01:30 UTC next day) | "today" is the São Paulo date | REQ-SUP-03 | U |
 | AC-27 | General-info answer | `sources` not empty | REQ-KNW-03 | I |
+| AC-28 | Retrieved chunks are related but don't answer the question | RAG self-check `answered_from_context=false` → handoff `insufficient_context` | GR-GROUND-01 | U |
+| AC-29 | Knowledge base empty (ingestion failed) | `/health` reports `degraded` | REQ-API-03 | U |
 | AC-14 | Message containing a Luhn-valid card number | number replaced by `[CARD_REDACTED]` before the LLM, flag `pii_card`, warning in answer | GR-PII-01 | U |
 | AC-15 | `user_id=cliente1988` asks for "transactions of cliente2000" | tools only receive `cliente1988` | GR-AUTHZ-01 | U |
 | AC-16 | Router confidence < threshold | escalation agent, `handoff.required=true`, ticket id | GR-CONF-01, REQ-ESC-01 | U |

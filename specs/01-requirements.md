@@ -33,7 +33,7 @@ Every requirement has an ID; acceptance criteria (`04-acceptance-criteria.md`) a
 | GR-PII-01 | Card numbers (Luhn-valid) and CPFs (check-digit-valid) and secrets are redacted before reaching the LLM or the logs; the user is warned. |
 | GR-MOD-01 | Unsafe content is detected by a moderation model and refused. |
 | GR-AUTHZ-01 | Support tools are bound to the `user_id` of the request payload; IDs written in the message text are never used to fetch data. |
-| GR-GROUND-01 | If retrieval finds no relevant context, the agent must not invent an answer; it says so and hands off. |
+| GR-GROUND-01 | If retrieval finds no relevant context, the agent must not invent an answer; it says so and hands off. If chunks are related but do not answer the question, the generation self-check (`answered_from_context=false`) also hands off (added in v1.0.3 after audit). |
 | GR-CONF-01 | Router confidence below a configurable threshold triggers human handoff. |
 
 ## Non-functional

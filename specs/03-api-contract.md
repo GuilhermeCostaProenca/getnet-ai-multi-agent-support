@@ -46,3 +46,5 @@ Errors: 422 for invalid payload (FastAPI validation). Upstream/LLM failures retu
 ```json
 { "status": "ok", "knowledge_base_chunks": 312 }
 ```
+
+`status` is `degraded` when the knowledge base is empty (e.g. startup ingestion failed): the API still answers, but product questions hand off.

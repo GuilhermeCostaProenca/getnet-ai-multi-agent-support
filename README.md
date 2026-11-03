@@ -61,7 +61,7 @@ uvicorn app.main:app --reload
 ## 2. Tests
 
 ```bash
-pytest                    # 39 deterministic tests: fake LLM, in-memory store, no network, no key
+pytest                    # 41 deterministic tests: fake LLM, in-memory store, no network, no key
 pytest -m integration     # real OpenAI + ingested KB: the 10 challenge scenarios + an out-of-scope case
 ```
 
@@ -142,7 +142,7 @@ product_knowledge general_info  customer_support   out_of_scope/unsafe  low conf
 | **Chunking** | Paragraph-aware, ~1000 chars with 150-char overlap; metadata `url`, `title`, `chunk_index`. |
 | **Storage** | Embeddings via `text-embedding-3-small` stored in a persistent Chroma collection (cosine). Chroma's default local embedding model is never used. |
 | **Retrieval** | Query rewriting to Portuguese by the router → top-k (8) → filter by `RAG_MIN_SIMILARITY`. |
-| **Generation** | Grounded prompt: answer only from numbered context, cite `[n]`, say when the answer is not in the context. **No relevant chunk → no generation call**: the agent says it didn't find it and hands off (anti-hallucination). |
+| **Generation** | Grounded prompt: answer only from numbered context, cite `[n]`, say when the answer is not in the context. Structured output (`KnowledgeAnswer`) includes a self-check `answered_from_context`. **No relevant chunk → no generation call**, and **related chunks that don't answer → `answered_from_context=false`**: both hand off to a human (anti-hallucination). Verified on real runs: legitimate questions 0/6 handoffs, non-existent products 4/4 handoffs. |
 
 ---
 
@@ -192,6 +192,8 @@ See [`specs/02-architecture.md`](specs/02-architecture.md) (ADR-01…08). Highli
 - `user_id` is trusted from the payload; production must derive it from authentication (JWT) instead.
 - Web answers list the URLs the model cited; when the provider answers from a data API without citations (weather), `sources` reports what the search consulted (e.g. `api:oai-weather`) instead of a URL.
 - Settlement dates skip weekends but not Brazilian bank holidays (mock rule).
+- Mixed requests ("Get Smart fee + write a poem") are refused as a whole (conservative scope policy); competitor comparisons are out of scope. A finer policy would answer the in-scope part only.
+- `/health` reports `degraded` when the KB is empty; ingestion is retried only on restart (next step: background retry).
 - KB coverage is limited to the curated pages; answers outside them correctly trigger handoff.
 - Ingestion upserts chunks by `url#index`: if a page shrinks, stale chunks remain until `python -m app.rag.ingest --reset` (or `docker compose down -v`). Next step: content hashing and per-URL replacement.
 - Next: streaming responses, rate limiting per user, OpenTelemetry, re-ranking (cross-encoder) and hybrid search (BM25 + vectors), evaluation in CI.
