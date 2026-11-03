@@ -58,7 +58,9 @@ def create_app(llm: LLMClient | None = None, store: KnowledgeStore | None = None
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "knowledge_base_chunks": app.state.store.count()}
+        chunks = app.state.store.count()
+        # degraded: API is up but product answers will hand off until the KB is ingested
+        return {"status": "ok" if chunks else "degraded", "knowledge_base_chunks": chunks}
 
     return app
 

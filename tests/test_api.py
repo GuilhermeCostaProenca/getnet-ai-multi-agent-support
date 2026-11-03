@@ -16,3 +16,8 @@ def test_ac19_invalid_payloads_return_422(client):
 
 def test_health(client):
     assert client.get("/health").json() == {"status": "ok", "knowledge_base_chunks": 1}
+
+
+def test_health_degraded_when_knowledge_base_is_empty(client, store):
+    store.hits = []
+    assert client.get("/health").json() == {"status": "degraded", "knowledge_base_chunks": 0}
