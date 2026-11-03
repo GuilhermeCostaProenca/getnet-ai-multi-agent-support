@@ -61,7 +61,7 @@ uvicorn app.main:app --reload
 ## 2. Tests
 
 ```bash
-pytest                    # 34 deterministic tests: fake LLM, in-memory store, no network, no key
+pytest                    # 36 deterministic tests: fake LLM, in-memory store, no network, no key
 pytest -m integration     # real OpenAI + ingested KB: the 10 challenge scenarios + an out-of-scope case
 ```
 
@@ -191,6 +191,7 @@ See [`specs/02-architecture.md`](specs/02-architecture.md) (ADR-01…08). Highli
 - `user_id` is trusted from the payload; production must derive it from authentication (JWT) instead.
 - Web-search citations depend on the provider returning URL annotations (some answers, e.g. weather widgets, may come without them).
 - KB coverage is limited to the curated pages; answers outside them correctly trigger handoff.
+- Ingestion upserts chunks by `url#index`: if a page shrinks, stale chunks remain until `python -m app.rag.ingest --reset` (or `docker compose down -v`). Next step: content hashing and per-URL replacement.
 - Next: streaming responses, rate limiting per user, OpenTelemetry, re-ranking (cross-encoder) and hybrid search (BM25 + vectors), evaluation in CI.
 
 ## 9. How AI tools were used
