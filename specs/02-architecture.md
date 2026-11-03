@@ -54,5 +54,5 @@ Direct, synchronous function calls between agents, mediated by the Orchestrator.
 2. **Cleaning**: BeautifulSoup, drop `script/style/noscript/svg/header/footer/nav/form`, keep text lines; remove lines repeated in ≥ 50% of pages.
 3. **Chunking**: paragraph-aware, ~1000 chars, 150 chars overlap, metadata `url`, `title`, `chunk_index`.
 4. **Storage**: embeddings (`text-embedding-3-small`) in a persistent Chroma collection (cosine).
-5. **Retrieval**: top-k (5) by cosine similarity, filtered by `RAG_MIN_SIMILARITY`.
+5. **Retrieval**: router-rewritten Portuguese query → top-k by cosine similarity, filtered by `RAG_MIN_SIMILARITY` (0.30). Top-k changed 5 → 8 after the first real run (antecipação/Pix answers missed relevant FAQ chunks). Audit on v1.0.1: relevant queries scored 0.46–0.69, an off-topic query 0.25–0.27, so 0.30 separates them.
 6. **Generation**: grounded prompt — answer only from numbered context, cite `[n]`, say when the context does not contain the answer.

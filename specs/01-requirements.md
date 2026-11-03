@@ -13,10 +13,11 @@ Every requirement has an ID; acceptance criteria (`04-acceptance-criteria.md`) a
 | REQ-ORC-01 | At least three distinct agents (Router, Knowledge, Customer Support) cooperate through an explicit, typed communication mechanism (direct function calls with Pydantic contracts). |
 | REQ-ORC-02 | Every response carries a trace of the steps/agents involved (agent, decision, duration). |
 | REQ-RTR-01 | The Router is the single entry point: it classifies each message into a closed set of intents and selects the agent (or sequence of agents). |
-| REQ-RTR-02 | Router output is structured (schema-validated), including intent, confidence, language and whether the knowledge base should complement a support answer. |
+| REQ-RTR-02 | Router output is structured (schema-validated), including intent, confidence, language, whether the knowledge base should complement a support answer, and a Portuguese `retrieval_query` (query rewriting, added in v1.0.0 after the first real run: the KB is Portuguese and questions may be English). |
+| REQ-SUP-03 | Date-relative questions ("yesterday's sales") use the merchant's business timezone (America/Sao_Paulo), not the server clock (added in v1.0.2 after audit). |
 | REQ-KNW-01 | The Knowledge Agent answers Getnet product/service questions using RAG over content ingested from Getnet's websites. |
 | REQ-KNW-02 | The Knowledge Agent answers general-purpose factual questions (e.g. weather, exchange rates) using a web search tool. |
-| REQ-KNW-03 | Answers cite their sources (URL) and are grounded only on retrieved context. |
+| REQ-KNW-03 | Answers cite their sources (URL) and are grounded only on retrieved context. Web answers report cited URLs, or the sources the search consulted when the provider returns no citation (e.g. data APIs such as weather). |
 | REQ-RAG-01 | Ingestion pipeline: fetch → clean (remove navigation/boilerplate) → chunk → embed → persist in a vector store. |
 | REQ-RAG-02 | Retrieval uses vector similarity with a minimum relevance threshold. |
 | REQ-SUP-01 | The Customer Support Agent resolves inquiries by calling tools that retrieve the user's data (≥ 2 tools). |
