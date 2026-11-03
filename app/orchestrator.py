@@ -55,7 +55,7 @@ class Orchestrator:
         handoff = Handoff()
 
         if check.blocked:
-            result = AgentResult(agent="guardrail", answer=policy_text("unsafe", None))
+            result = AgentResult(agent="guardrail", answer=policy_text("blocked", None))
         else:
             result = None
             # 2. Moderation classifier (fails open, ADR-08)

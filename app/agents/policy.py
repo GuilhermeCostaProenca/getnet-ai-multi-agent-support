@@ -18,6 +18,12 @@ _TEXT = {
         "pt": "Não posso ajudar com esse pedido. Se você suspeita de fraude ou uso indevido da sua conta, fale "
         "com a Getnet imediatamente pelo 4002-4000 ou 4003-4000 (capitais e regiões metropolitanas).",
     },
+    "blocked": {
+        "en": "I can't process that message because it tries to change how I work. I'm Getnet's assistant: ask me "
+        "about Getnet products, your sales and deposits, or your card machine.",
+        "pt": "Não posso processar essa mensagem porque ela tenta alterar meu funcionamento. Sou o assistente da "
+        "Getnet: pergunte sobre produtos Getnet, suas vendas e recebimentos ou sua maquininha.",
+    },
     "pii_warning": {
         "en": "\n\nNote: for your security I removed sensitive data (card number, CPF or password) from your "
         "message. Never share it in chats.",
