@@ -6,3 +6,4 @@ openai==2.54.0
 chromadb==1.5.9
 httpx==0.28.1
 beautifulsoup4==4.12.3
+tzdata==2025.2

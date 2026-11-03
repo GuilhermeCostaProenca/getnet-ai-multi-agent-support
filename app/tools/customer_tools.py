@@ -9,8 +9,12 @@ Authorization: tools receive `user_id` from the orchestrator (request payload), 
 LLM. The LLM-facing schemas below do not even expose a user_id parameter.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
+
+# "Yesterday" must be the merchant's yesterday, not the server's (containers run in UTC).
+BUSINESS_TZ = ZoneInfo("America/Sao_Paulo")
 
 MOCK_LABEL = "MOCK - simulated data for demonstration, not real customer records"
 
@@ -68,6 +72,10 @@ DECLINE_CODES: dict[str, dict[str, str]] = {
 }
 
 
+def business_today(now: datetime | None = None) -> date:
+    return (now or datetime.now(BUSINESS_TZ)).astimezone(BUSINESS_TZ).date()
+
+
 def _customer(user_id: str) -> dict[str, Any] | None:
     return _CUSTOMERS.get(user_id)
 
@@ -114,7 +122,7 @@ def get_sales_and_settlements(user_id: str, days_back: int = 7, today: date | No
     c = _customer(user_id)
     if not c:
         return _not_found(user_id)
-    today = today or date.today()
+    today = today or business_today()
     days_back = max(1, min(int(days_back), 30))
     items = []
     for s in c["sales"]:

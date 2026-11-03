@@ -15,6 +15,15 @@ def test_ac03_settlement_dates_follow_rules():
     assert by_method[("credit", "3/3")]["amount"] == 200.0
 
 
+def test_business_day_uses_brazil_timezone_not_utc():
+    from datetime import datetime, timezone
+
+    from app.tools.customer_tools import business_today
+
+    # 01:30 UTC on Nov 4 is still 22:30 on Nov 3 in São Paulo
+    assert business_today(datetime(2026, 11, 4, 1, 30, tzinfo=timezone.utc)) == date(2026, 11, 3)
+
+
 def test_ac08_decline_codes_are_explained():
     out = diagnose_terminal("cliente1988", None, "51")
     assert out["decline_codes"][0]["code"] == "51"
