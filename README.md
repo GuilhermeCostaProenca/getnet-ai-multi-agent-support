@@ -61,14 +61,15 @@ uvicorn app.main:app --reload
 ## 2. Tests
 
 ```bash
-pytest                    # 36 deterministic tests: fake LLM, in-memory store, no network, no key
+pytest                    # 39 deterministic tests: fake LLM, in-memory store, no network, no key
 pytest -m integration     # real OpenAI + ingested KB: the 10 challenge scenarios + an out-of-scope case
 ```
 
 | Layer | What it proves | Files |
 |---|---|---|
 | Unit — guardrails | Luhn / CPF validation, redaction, injection patterns (EN/PT), no false positives on plain numbers | `tests/test_guardrails.py` |
-| Unit — tools | settlement-date rules (Pix D+0, debit D+1 business day, credit D+30 per installment), decline codes, terminal diagnosis, MOCK labeling, authorization binding | `tests/test_customer_tools.py` |
+| Unit — tools | settlement-date rules (Pix D+0, debit D+1 business day, credit D+30 per installment), São Paulo business date (not server UTC), decline codes, terminal diagnosis, MOCK labeling, authorization binding | `tests/test_customer_tools.py` |
+| Unit — LLM client | web-search source parsing (cited URLs vs. consulted sources / data APIs) with the SDK stubbed | `tests/test_llm_client.py` |
 | Unit — RAG | HTML cleaning, cross-page boilerplate removal, chunk size/overlap | `tests/test_ingest.py` |
 | Orchestration | routing per intent, agent sequence (KB → Support), refusals without specialist calls, PII never reaches the LLM, low confidence / no grounding / LLM failure → handoff, moderation fail-open, trace | `tests/test_orchestrator.py` |
 | API contract | response schema, 422 validation, health | `tests/test_api.py` |
@@ -189,7 +190,8 @@ See [`specs/02-architecture.md`](specs/02-architecture.md) (ADR-01…08). Highli
 - Customer data and the handoff queue are **mock / in-memory** (no Getnet APIs available).
 - No conversation memory: each request is stateless (next step: session store keyed by `user_id`).
 - `user_id` is trusted from the payload; production must derive it from authentication (JWT) instead.
-- Web-search citations depend on the provider returning URL annotations (some answers, e.g. weather widgets, may come without them).
+- Web answers list the URLs the model cited; when the provider answers from a data API without citations (weather), `sources` reports what the search consulted (e.g. `api:oai-weather`) instead of a URL.
+- Settlement dates skip weekends but not Brazilian bank holidays (mock rule).
 - KB coverage is limited to the curated pages; answers outside them correctly trigger handoff.
 - Ingestion upserts chunks by `url#index`: if a page shrinks, stale chunks remain until `python -m app.rag.ingest --reset` (or `docker compose down -v`). Next step: content hashing and per-URL replacement.
 - Next: streaming responses, rate limiting per user, OpenTelemetry, re-ranking (cross-encoder) and hybrid search (BM25 + vectors), evaluation in CI.
