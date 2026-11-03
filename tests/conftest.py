@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import build_orchestrator, create_app
 from app.rag.store import Hit
-from app.schemas import RouteDecision, Source, ToolCall
+from app.schemas import KnowledgeAnswer, RouteDecision, Source, ToolCall
 
 
 def decision(intent="product_knowledge", confidence=0.95, consult_kb=False, language="en") -> RouteDecision:
@@ -22,6 +22,7 @@ class FakeLLM:
 
     def __init__(self):
         self.route = decision()
+        self.kb_answer = KnowledgeAnswer(answer="grounded answer [1]", answered_from_context=True)
         self.tool_plan: list[tuple[str, dict[str, Any]]] = []
         self.flagged = False
         self.fail_on: set[str] = set()
@@ -37,12 +38,11 @@ class FakeLLM:
         return [p for n, p in self.calls if n == name]
 
     def parse(self, instructions, user_input, schema):
+        if schema is KnowledgeAnswer:
+            self._record("parse_kb", user_input)
+            return self.kb_answer
         self._record("parse", user_input)
         return self.route
-
-    def generate(self, instructions, user_input):
-        self._record("generate", user_input)
-        return "grounded answer [1]"
 
     def web_search(self, instructions, question):
         self._record("web_search", question)

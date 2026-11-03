@@ -30,6 +30,15 @@ class RouteDecision(BaseModel):
     rationale: str = Field(..., description="One short sentence explaining the decision")
 
 
+class KnowledgeAnswer(BaseModel):
+    """Structured output of RAG generation: the answer plus a self-check used for handoff (GR-GROUND-01)."""
+
+    answer: str
+    answered_from_context: bool = Field(
+        ..., description="false when the context does not contain the answer to the main question"
+    )
+
+
 class Source(BaseModel):
     title: str
     url: str

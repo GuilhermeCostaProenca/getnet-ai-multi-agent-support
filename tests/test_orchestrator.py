@@ -11,7 +11,7 @@ def test_product_question_uses_rag_with_sources(orchestrator, llm):
     r = ask(orchestrator, "Do I need a bank account for Pix?")
     assert (r.intent, r.agent) == ("product_knowledge", "knowledge")
     assert r.sources[0].url.startswith("https://site.getnet.com.br")
-    assert llm.called("generate")
+    assert llm.called("parse_kb")
 
 
 def test_general_info_uses_web_search(orchestrator, llm):
@@ -40,7 +40,7 @@ def test_ac11_out_of_scope_is_refused_without_specialists(orchestrator, llm):
     llm.route = decision("out_of_scope")
     r = ask(orchestrator, "Solve 2x+3=7")
     assert r.agent == "guardrail" and "Getnet" in r.answer
-    assert not (llm.called("generate") or llm.called("run_tools") or llm.called("web_search"))
+    assert not (llm.called("parse_kb") or llm.called("run_tools") or llm.called("web_search"))
 
 
 def test_ac13_injection_never_reaches_router(orchestrator, llm):
@@ -73,18 +73,29 @@ def test_ac16_low_confidence_escalates(orchestrator, llm):
 def test_ac17_no_relevant_context_does_not_generate(orchestrator, llm, store):
     store.hits = [Hit("menu", "Home", "https://site.getnet.com.br/", 0.05)]
     r = ask(orchestrator, "What is the fee of product X?")
-    assert not llm.called("generate")
+    assert not llm.called("parse_kb")
     assert r.handoff.required and r.handoff.reason == "no_relevant_context"
+
+
+def test_ac28_related_but_insufficient_context_hands_off(orchestrator, llm):
+    from app.schemas import KnowledgeAnswer
+
+    llm.kb_answer = KnowledgeAnswer(answer="I couldn't find it in the official content.", answered_from_context=False)
+    r = ask(orchestrator, "What is the exact fee of antecipação for my plan?")
+    assert r.agent == "knowledge" and r.sources
+    assert r.handoff.required and r.handoff.reason == "insufficient_context" and r.handoff.ticket_id in r.answer
 
 
 def test_ac18_llm_failure_degrades_to_handoff(orchestrator, llm):
     llm.fail_on = {"parse"}
     r = ask(orchestrator, "anything")
     assert r.agent == "escalation" and r.handoff.reason == "router_failure"
+    steps = [s.step for s in r.trace]
+    assert steps.index("router") < steps.index("escalation_agent")  # trace keeps execution order
 
 
 def test_agent_failure_degrades_to_handoff(orchestrator, llm):
-    llm.fail_on = {"generate"}
+    llm.fail_on = {"parse_kb"}
     r = ask(orchestrator, "Pix?")
     assert r.agent == "escalation" and r.handoff.reason.startswith("agent_failure")
 

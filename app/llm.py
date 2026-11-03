@@ -21,8 +21,6 @@ ToolExecutor = Callable[[str, dict[str, Any]], dict[str, Any]]
 class LLMClient(Protocol):
     def parse(self, instructions: str, user_input: str, schema: type[T]) -> T: ...
 
-    def generate(self, instructions: str, user_input: str) -> str: ...
-
     def web_search(self, instructions: str, question: str) -> tuple[str, list[Source]]: ...
 
     def run_tools(
@@ -53,10 +51,6 @@ class OpenAIClient:
         if resp.output_parsed is None:
             raise ValueError("LLM returned no structured output")
         return resp.output_parsed
-
-    def generate(self, instructions: str, user_input: str) -> str:
-        resp = self._client.responses.create(model=self._model, instructions=instructions, input=user_input)
-        return resp.output_text.strip()
 
     def web_search(self, instructions: str, question: str) -> tuple[str, list[Source]]:
         resp = self._client.responses.create(
