@@ -86,7 +86,9 @@ class MemoryStore:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(openai_api_key="test", auto_ingest=False, router_min_confidence=0.55, rag_min_similarity=0.3)
+    # _env_file=None: tests must not depend on the developer's local .env
+    return Settings(_env_file=None, openai_api_key="test", auto_ingest=False, moderation_enabled=True,
+                    router_min_confidence=0.55, rag_min_similarity=0.3)
 
 
 @pytest.fixture
