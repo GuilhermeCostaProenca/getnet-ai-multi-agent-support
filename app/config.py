@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     chroma_path: str = "./data/chroma"
     chroma_collection: str = "getnet_kb"
     auto_ingest: bool = True
-    rag_top_k: int = 5
+    rag_top_k: int = 8
     rag_min_similarity: float = 0.30
 
     router_min_confidence: float = 0.55

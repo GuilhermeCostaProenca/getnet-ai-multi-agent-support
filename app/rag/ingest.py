@@ -21,7 +21,7 @@ from app.rag.store import KnowledgeStore
 log = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (compatible; GetnetSupportBot/1.0; +challenge-demo)"
-_DROP_TAGS = ["script", "style", "noscript", "svg", "header", "footer", "nav", "form", "iframe"]
+_DROP_TAGS = ["head", "title", "script", "style", "noscript", "svg", "header", "footer", "nav", "form", "iframe"]
 
 
 @dataclass
