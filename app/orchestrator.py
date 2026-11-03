@@ -93,13 +93,15 @@ class Orchestrator:
 
     def _route_and_dispatch(self, user_id: str, text: str, step):
         # 3. Router
+        decision = None
         with step("router") as s:
             try:
                 decision = self.router.route(text)
                 s["detail"] = f"intent={decision.intent} conf={decision.confidence:.2f} lang={decision.language}"
             except Exception as exc:  # noqa: BLE001
                 s["detail"] = f"failed: {type(exc).__name__}"
-                return self._escalate(user_id, text, "router_failure", None, step)
+        if decision is None:  # escalate after closing the router step so the trace stays in order
+            return self._escalate(user_id, text, "router_failure", None, step)
 
         lang = decision.language
         if decision.intent in ("out_of_scope", "unsafe"):
