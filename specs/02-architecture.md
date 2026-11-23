@@ -33,6 +33,11 @@ Operator ──Bearer JWT (role=operator)──► /v1/operator/tickets … clai
 | ADR-08 | ChromaDB embedded + curated Getnet sources (site.getnet.com.br FAQ first) with boilerplate removal | Same reasoning as v1 (validated: relevant 0.46–0.69 vs off-topic 0.25–0.27 cosine). |
 | ADR-09 | Token usage metered per request via a context variable | Cost/latency visibility per conversation turn without threading a meter through every call. |
 
+| ADR-10 | Multi-query retrieval (rewrite + original), one embedding call | Cross-lingual recall from the rewrite, lexical specificity from the original; cost: one extra vector query. |
+| ADR-11 | Reviewer → at most one revision for Support answers | Catches numbers/dates not present in tool output; bounded so latency and cost stay predictable. |
+| ADR-12 | Approval gate for money-moving tools | The model proposes, a human disposes; the tool validates limits before any ticket is opened. |
+| ADR-13 | Rolling summary in batches of 4 turns | Prompt size stays bounded; the summary is persisted, so it survives restarts. |
+
 ## RAG pipeline
 fetch curated pages → strip `head/nav/header/footer/script/style/form` → drop lines repeated in ≥ 50% of pages →
 paragraph-aware chunks (~1000 chars, 150 overlap) → `text-embedding-3-small` → Chroma (cosine) →

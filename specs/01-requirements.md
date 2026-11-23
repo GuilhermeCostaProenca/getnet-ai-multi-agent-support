@@ -54,6 +54,17 @@ acceptance criteria (`04-acceptance-criteria.md`) and by test names.
 | ORC-05 | Independent tasks run in parallel; every step is recorded in a per-request trace. |
 | ORC-06 | Any agent/LLM failure degrades to a handoff answer (HTTP 200), never a stack trace. |
 
+## Added during implementation (driven by evidence from live runs and the evaluation harness)
+
+| ID | Requirement | Evidence that motivated it |
+|---|---|---|
+| HITL-04 | An explicit request for a human ("quero falar com um atendente") always escalates. | End-to-end demo: there was no path to a person. |
+| HITL-05 | Money-moving actions (receivables advance) are never executed by the model: they are validated and become approval tickets with the pending action in the operator context. | Rubric: approval gates for risky actions. |
+| ORC-07 | A reviewer checks Support answers against the tool results; inconsistent answers get one bounded revision. | v1 critique: no critic / iterative refinement. |
+| MEM-04 | Turns leaving the history window are folded into a persisted rolling summary (additive DB migration). | Bounded window alone loses older context. |
+| KNW-04 | Retrieval uses the planner's Portuguese rewrite **and** the user's wording, merged by best score. | Judge flagged wrong crediário answers: the rewrite ranked the "up to 48x" chunk 5th, the original 1st. |
+| OBS-02 | `GET /metrics` (Prometheus text): requests per agent, planned tasks, handoffs per reason, guardrail flags, LLM calls/tokens, latency p50/p95. | Operational monitoring. |
+
 ## Evaluation, observability, operations
 
 | ID | Requirement |

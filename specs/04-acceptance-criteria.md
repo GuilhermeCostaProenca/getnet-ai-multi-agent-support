@@ -37,4 +37,10 @@ Test names carry the AC id.
 | AC-42 | Every tool output labelled MOCK; settlement dates computed in America/Sao_Paulo | REQ-SUP-01 | U |
 | AC-43 | Ingestion cleaning: boilerplate removed, chunk size/overlap respected | REQ-KNW-01 | U |
 | AC-44 | Response carries trace, usage and request id; one JSON log line without raw PII | OBS-01 | U |
-| AC-45 | Evaluation report: routing accuracy, refusal P/R, Recall@K, MRR, pass^k, PT×EN | EVAL-02 | E |
+| AC-45 | Evaluation report: routing accuracy, refusal P/R, Recall@K, MRR, pass^k, PT×EN, LLM-as-judge quality | EVAL-02 | E |
+| AC-46 | Support answer inconsistent with tool results → revised once; consistent → unchanged | ORC-07 | U |
+| AC-47 | "I want to talk to an attendant" → handoff `user_requested_human` | HITL-04 | U, demo |
+| AC-48 | Advance request → approval ticket with the pending action; invalid amounts rejected by the tool | HITL-05 | U |
+| AC-49 | Long conversation → older turns summarized and sent as `[summary of earlier turns]`; old DBs migrated | MEM-04 | U |
+| AC-50 | `/metrics` counts requests, handoffs per reason and guardrail flags; exposes latency quantiles | OBS-02 | U |
+| AC-51 | Retrieval embeds the rewrite and the original query in one call and merges results | KNW-04 | U, E |

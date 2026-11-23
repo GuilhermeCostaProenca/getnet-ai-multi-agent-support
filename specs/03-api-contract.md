@@ -42,6 +42,7 @@ Response 200:
 ## Other
 - `POST /v1/auth/dev-token` `{"user_id", "role"}` → `{"access_token"}` — only when `ENABLE_DEV_TOKENS=true` (demo/testing).
 - `GET /health` → `{"status": "ok"|"degraded", "knowledge_base_chunks": n}`.
+- `GET /metrics` → Prometheus text (internal scrape; not exposed publicly in production).
 
 Errors: 401 (no/invalid/expired token), 403 (role or `user_id` mismatch), 404 (unknown or foreign conversation/ticket),
 409 (ticket state conflict), 422 (validation), 429 (rate limit). LLM failures → 200 with a handoff answer.
