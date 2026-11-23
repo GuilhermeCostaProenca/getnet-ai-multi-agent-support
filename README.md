@@ -19,7 +19,7 @@ gaps found in the v1 evaluation (7.3/10). v1 remains on `main` history / tags `v
 | **Orchestration "plan-once"** | Multi-task plans (compound requests answered in part instead of refused); clarify before handoff; observe→replan (RAG → Getnet-restricted web → human); **reviewer → bounded revision** of Support answers; parallel tasks | AC-38..41, AC-46 |
 | **Evaluation 7.7** — no metrics | Labelled dataset + harness: routing/tool accuracy, refusal P/R, Recall@K, MRR, PT×EN, pass^k, **LLM-as-judge**, latency, tokens; CI on every push | AC-45, [`eval/report.md`](eval/report.md) |
 | RAG 8.2 | **Multi-query retrieval** (PT rewrite + original wording) + **product-page boost** (dense + lexical signal) — fixed the wrong crediário answers the judge found (24x from a related product instead of 48x) | AC-51, AC-52 |
-| Resilience (added after a power cut, see below) | Per-tool timeout (`tool_timeout`), **fallback chat model** on connection/5xx errors, **incremental ingestion** by content hash (unchanged chunks are not re-embedded) | AC-55..57 |
+| Resilience & cost (added after a power cut, see below) | Per-tool timeout (`tool_timeout`), **fallback chat model** on connection/5xx errors, **incremental ingestion** by content hash (unchanged chunks are not re-embedded), **query-embedding cache** (LRU), idempotency keys expire after 24 h | AC-55..58 |
 | Memory & Resilience (cont.) | **`Idempotency-Key`** on `POST /v1/chat`: retries replay the stored answer (no duplicate tickets/approvals); key reuse with another body → 422 | AC-53 |
 | Observability 6.5 | **Moderation ‖ planner** in parallel (one network round-trip less per request) · token usage per request (metered across parallel agents), trace, structured JSON logs, **`/metrics`** (requests, handoffs by reason, guardrail flags, tokens, latency p50/p95) | AC-44, AC-50, AC-54 |
 
@@ -27,7 +27,7 @@ gaps found in the v1 evaluation (7.3/10). v1 remains on `main` history / tags `v
 
 | Check | Result |
 |---|---|
-| Deterministic tests (`pytest`, fake LLM, CI on every push) | **58 passed** |
+| Deterministic tests (`pytest`, fake LLM, CI on every push) | **60 passed** |
 | Live integration (`pytest -m integration`, real model, the 10 challenge scenarios + follow-up + compound) | **12 / 12** |
 | Eval — 26 labelled cases × 3 runs = 78 real requests ([`eval/report.md`](eval/report.md)) | routing **1.0** (EN 1.0 / PT 1.0) · tool accuracy **1.0** · refusal P/R **1.0 / 1.0** · pass^3 **1.0** · 0 unexpected handoffs |
 | LLM-as-judge (same 78 answers) | answers the question **1.0** · right language **1.0** · KB answers grounded in excerpts **0.889** (0.86–0.92 across the last three runs) · score **4.33 / 5** |
@@ -190,8 +190,8 @@ programmer under my direction (I defined the approach, reviewed, ran and verifie
 do structured planning, tool calling, grounded generation, web search and moderation.
 
 **Timebox log (transparency).** Window opened 15:38:06; work stopped at 16:22 (44 min) when the power went out. The
-remaining ~16 min were used after power returned (from 19:55): per-tool timeout, fallback chat model and incremental
-ingestion (commit after `8d585f6`). Those three are covered by deterministic tests only: the OpenAI account had run out
+remaining ~16 min were used after power returned (from 19:55): per-tool timeout, fallback chat model, incremental
+ingestion, query-embedding cache and idempotency TTL (commits after `8d585f6`). These are covered by deterministic tests only: the OpenAI account had run out
 of credits by then, so the live integration suite, the eval and the container run above reflect `8d585f6`; none of the
-three changes touches the planner, the agents' prompts or retrieval. The local index keeps its old chunk ids until the
+changes alters the planner, the agents' prompts or retrieval ranking. The local index keeps its old chunk ids until the
 next ingestion with credits, which migrates them once (re-embeds and deletes the old ids).

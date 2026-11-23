@@ -1,7 +1,9 @@
 """Knowledge agent: RAG over Getnet content, site-restricted web replan, and general web search (REQ-KNW, ORC-04)."""
 
 import re
+import threading
 import unicodedata
+from collections import OrderedDict
 
 from app.agents.policy import policy_text
 from app.llm import LLMClient
@@ -49,6 +51,27 @@ class KnowledgeAgent:
         self._store = store
         self._top_k = top_k
         self._min_similarity = min_similarity
+        self._qcache: OrderedDict[str, list[float]] = OrderedDict()  # LRU of query embeddings
+        self._qlock = threading.Lock()
+
+    QUERY_CACHE_SIZE = 1024
+
+    def _embed_queries(self, queries: list[str]) -> list[list[float]]:
+        """Support traffic repeats the same questions (and the planner's rewrites): cached query vectors save an
+        embedding call per repeated question. Only queries are cached; documents are embedded at ingestion."""
+        with self._qlock:
+            missing = [q for q in queries if q not in self._qcache]
+        if missing:
+            vectors = self._llm.embed(missing)
+            with self._qlock:
+                for q, v in zip(missing, vectors):
+                    self._qcache[q] = v
+                while len(self._qcache) > self.QUERY_CACHE_SIZE:
+                    self._qcache.popitem(last=False)
+        with self._qlock:
+            for q in queries:
+                self._qcache.move_to_end(q)
+            return [self._qcache[q] for q in queries]
 
     def retrieve(self, *queries: str) -> list[Hit]:
         """Multi-query retrieval: the planner's Portuguese rewrite plus the user's own wording, merged by best score.
@@ -58,7 +81,7 @@ class KnowledgeAgent:
         if not unique or self._store.count() == 0:
             return []
         best: dict[tuple[str, str], Hit] = {}
-        for vector in self._llm.embed(unique):
+        for vector in self._embed_queries(unique):
             for h in self._store.query(vector, self._top_k * 3):
                 key = (h.url, h.text[:120])
                 if key not in best or best[key].score < h.score:

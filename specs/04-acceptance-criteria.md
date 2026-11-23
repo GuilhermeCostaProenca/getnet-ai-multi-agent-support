@@ -47,6 +47,7 @@ Test names carry the AC id.
 | AC-55 | A tool slower than its deadline returns `tool_timeout` instead of hanging the request | D6 / SUP | U |
 | AC-56 | Re-ingesting unchanged pages embeds nothing; a changed chunk is re-embedded and the old one deleted | KNW-05 | U |
 | AC-57 | Connection/timeout/5xx on the chat model → one retry on the fallback model; other errors propagate | API-04 | U |
-| AC-53 | Same `Idempotency-Key` + same body → identical response and zero LLM calls; different body → 422; other identity unaffected | API-03 | U |
+| AC-58 | A repeated question reuses the cached query embedding (no second embedding call); LRU bounded at 1024 | OBS-04 | U |
+| AC-53 | Same `Idempotency-Key` + same body → identical response and zero LLM calls; different body → 422; other identity unaffected; keys expire after 24 h | API-03 | U |
 | AC-54 | A moderation flag yields a refusal with no agent step and no tool call even though the planner ran in parallel | OBS-03 | U |
 | AC-52 | A chunk from the named product's page outranks a higher-scoring FAQ chunk about a related product | KNW-04 | U, E |

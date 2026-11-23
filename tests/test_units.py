@@ -173,3 +173,29 @@ def test_chat_model_falls_back_once_on_outage_errors_only():
 
     with pytest.raises(ValueError):
         client._call(bad_request, input="hi")
+
+
+def test_query_embeddings_are_cached():
+    """I7 / AC-58: a repeated question does not pay a second embedding call."""
+    from app.agents.knowledge import KnowledgeAgent
+    from tests.conftest import FakeLLM, MemoryKB
+
+    llm = FakeLLM()
+    agent = KnowledgeAgent(llm, MemoryKB(), top_k=8, min_similarity=0.0)
+    agent.retrieve("taxa do pix", "Pix fee")
+    before = len(llm.called("embed"))
+    agent.retrieve("taxa do pix", "Pix fee")
+    assert len(llm.called("embed")) == before == 1
+
+
+def test_idempotency_keys_expire():
+    """API-03 / AC-53: keys older than the 24 h retry window are ignored and purged."""
+    from app.storage import Store
+
+    store = Store(":memory:")
+    store.save_idempotent("u1", "k1", "h", "{}")
+    assert store.get_idempotent("u1", "k1") is not None
+    store._db.execute("UPDATE idempotency SET created_at='2000-01-01T00:00:00+00:00'")
+    assert store.get_idempotent("u1", "k1") is None
+    store.save_idempotent("u1", "k2", "h", "{}")
+    assert store._rows("SELECT key FROM idempotency") == [{"key": "k2"}]

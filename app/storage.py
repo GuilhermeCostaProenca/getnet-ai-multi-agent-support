@@ -4,7 +4,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -66,11 +66,21 @@ class Store:
 
     # --- idempotency (REQ-API-03) ----------------------------------------------------------------------
     def get_idempotent(self, user_id: str, key: str) -> dict[str, Any] | None:
-        rows = self._rows("SELECT request_hash, response FROM idempotency WHERE user_id=? AND key=?", (user_id, key))
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=self.IDEMPOTENCY_TTL_HOURS)).isoformat(timespec="seconds")
+        rows = self._rows("SELECT request_hash, response FROM idempotency WHERE user_id=? AND key=? AND created_at >= ?",
+                          (user_id, key, cutoff))
         return rows[0] if rows else None
 
+    IDEMPOTENCY_TTL_HOURS = 24
+
     def save_idempotent(self, user_id: str, key: str, request_hash: str, response: str) -> None:
-        self._write("INSERT OR IGNORE INTO idempotency VALUES (?,?,?,?,?)", (user_id, key, request_hash, response, _now()))
+        """Keys live 24 h (retry window); expired rows are purged on write so the table stays bounded."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=self.IDEMPOTENCY_TTL_HOURS)).isoformat(timespec="seconds")
+        with self._lock:
+            self._db.execute("DELETE FROM idempotency WHERE created_at < ?", (cutoff,))
+            self._db.execute("INSERT OR IGNORE INTO idempotency VALUES (?,?,?,?,?)",
+                             (user_id, key, request_hash, response, _now()))
+            self._db.commit()
 
     # --- conversations -------------------------------------------------------------------------------
     def open_conversation(self, conversation_id: str | None, user_id: str) -> dict[str, Any]:

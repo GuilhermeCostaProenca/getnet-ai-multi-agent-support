@@ -65,6 +65,7 @@ acceptance criteria (`04-acceptance-criteria.md`) and by test names.
 | KNW-04 | Retrieval uses the planner's Portuguese rewrite **and** the user's wording, merged by best score. | Judge flagged wrong crediário answers: the rewrite ranked the "up to 48x" chunk 5th, the original 1st; with planner rewrites it still fell out of the top-8 until the product-page boost (ADR-14). |
 | KNW-05 | Ingestion is incremental: chunk ids are content hashes; unchanged chunks are not re-embedded, removed ones are deleted. | Re-ingestion cost and freshness without `--reset`. |
 | API-04 | Per-tool deadline (5 s → `tool_timeout`) and one fallback chat model on outage-type errors. | A slow backend or a model outage degrades one answer instead of hanging or failing the request. |
+| OBS-04 | Query embeddings are cached (LRU, 1024 entries). | Repeated support questions should not pay the embedding round-trip again. |
 | API-03 | `POST /v1/chat` honours an `Idempotency-Key` header (per identity): a retry replays the stored response without running agents; reusing a key with a different body → 422. | Client retries must not duplicate messages, tickets or approval requests. |
 | OBS-03 | Moderation and planning run concurrently; a moderation flag discards the plan before any agent or tool runs. | Latency: removes one sequential network round-trip from every request. |
 | OBS-02 | `GET /metrics` (Prometheus text): requests per agent, planned tasks, handoffs per reason, guardrail flags, LLM calls/tokens, latency p50/p95. | Operational monitoring. |
