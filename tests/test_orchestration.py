@@ -146,5 +146,5 @@ def test_ac44_metrics_endpoint_counts_requests_handoffs_and_flags(chat, client, 
 
 def test_ac44_response_carries_trace_usage_and_request_id(chat):
     r = chat("Pix?").json()
-    assert r["request_id"] and steps(r)[:3] == ["input_guardrails", "moderation", "planner"]
+    assert r["request_id"] and steps(r)[:4] == ["input_guardrails", "memory", "moderation", "planner"]
     assert set(r["usage"]) == {"llm_calls", "input_tokens", "output_tokens"}

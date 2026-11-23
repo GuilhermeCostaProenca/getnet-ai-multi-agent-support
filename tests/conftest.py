@@ -53,6 +53,9 @@ class FakeLLM:
         if schema is KnowledgeAnswer:
             self._record("parse_kb", user_input)
             return self.kb_answer
+        if schema.__name__ == "Summary":
+            self._record("summary", user_input)
+            return schema(text=f"SUMMARY#{len(self.called('summary'))}")
         self._record("plan", user_input)
         return self.plans.pop(0) if self.plans else self.default_plan
 

@@ -11,7 +11,8 @@ from typing import Any
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, status TEXT NOT NULL,
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '', summarized_until INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES conversations(id),
     role TEXT NOT NULL, content TEXT NOT NULL, agent TEXT, created_at TEXT NOT NULL);
@@ -41,7 +42,15 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            self._migrate()
             self._db.commit()
+
+    def _migrate(self) -> None:
+        """Additive migrations for databases created by earlier versions (no data loss)."""
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(conversations)")}
+        for name, ddl in (("summary", "TEXT NOT NULL DEFAULT ''"), ("summarized_until", "INTEGER NOT NULL DEFAULT 0")):
+            if name not in columns:
+                self._db.execute(f"ALTER TABLE conversations ADD COLUMN {name} {ddl}")
 
     def _write(self, sql: str, params: tuple = ()) -> None:
         with self._lock:
@@ -62,8 +71,9 @@ class Store:
             return conv
         now = _now()
         conv = {"id": f"c_{uuid.uuid4().hex[:16]}", "user_id": user_id, "status": "active", "created_at": now, "updated_at": now}
-        self._write("INSERT INTO conversations VALUES (?, ?, ?, ?, ?)", tuple(conv.values()))
-        return conv
+        self._write("INSERT INTO conversations (id, user_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    tuple(conv.values()))
+        return self.get_conversation(conv["id"])
 
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
         rows = self._rows("SELECT * FROM conversations WHERE id = ?", (conversation_id,))
@@ -71,6 +81,14 @@ class Store:
 
     def set_status(self, conversation_id: str, status: str) -> None:
         self._write("UPDATE conversations SET status = ?, updated_at = ? WHERE id = ?", (status, _now(), conversation_id))
+
+    def set_summary(self, conversation_id: str, summary: str, summarized_until: int) -> None:
+        self._write("UPDATE conversations SET summary = ?, summarized_until = ? WHERE id = ?",
+                    (summary, summarized_until, conversation_id))
+
+    def messages_between(self, conversation_id: str, after_id: int, before_id: int) -> list[dict[str, Any]]:
+        return self._rows("SELECT * FROM messages WHERE conversation_id = ? AND id > ? AND id < ? ORDER BY id",
+                          (conversation_id, after_id, before_id))
 
     def add_message(self, conversation_id: str, role: str, content: str, agent: str | None = None) -> None:
         self._write("INSERT INTO messages (conversation_id, role, content, agent, created_at) VALUES (?, ?, ?, ?, ?)",

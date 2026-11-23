@@ -20,6 +20,7 @@ from app.agents.planner import Planner
 from app.agents.policy import guess_language, policy_text
 from app.agents.support import SupportAgent
 from app.llm import LLMClient, start_meter
+from app.memory import ConversationMemory
 from app.observability import Metrics
 from app.schemas import (IN_SCOPE, AgentResult, ChatRequest, ChatResponse, GuardrailReport, Handoff, Plan, Source,
                          Task, ToolCall, TraceStep)
@@ -79,6 +80,7 @@ class Orchestrator:
         self._window = history_window
         self._moderation = moderation_enabled
         self._metrics = metrics or Metrics()
+        self._memory = ConversationMemory(store, llm, history_window)
 
     # --- entry point -----------------------------------------------------------------------------------
     def handle(self, user_id: str, req: ChatRequest) -> ChatResponse:
@@ -92,8 +94,9 @@ class Orchestrator:
         with trace.step("input_guardrails") as s:
             check = guardrails.check_input(req.message)
             s["detail"] = f"flags={check.flags or 'none'}"
-        history_msgs = self._store.messages(cid, self._window)
-        history = "\n".join(f"{m['role']}: {m['content'][:500]}" for m in history_msgs)
+        with trace.step("memory") as s:
+            history, history_msgs = self._memory.context(conv)
+            s["detail"] = f"window={len(history_msgs)} summary={'summary of earlier' in history}"
         self._store.add_message(cid, "user", check.text)  # only the redacted text is ever persisted
         input_flags = list(check.flags)
 
