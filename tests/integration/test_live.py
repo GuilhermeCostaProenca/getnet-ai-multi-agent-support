@@ -50,9 +50,12 @@ def test_ac35_follow_up_is_resolved_from_memory(live):
     client, headers = live
     first = client.post("/v1/chat", json={"message": "How many installments can I split a sale into with the crediário?"},
                         headers=headers).json()
-    second = client.post("/v1/chat", json={"message": "And can I sell it through a payment link on WhatsApp?",
+    # "it" only makes sense with memory; the fact asked for is documented on the Crediário page ("até 2 dias úteis").
+    # (The earlier follow-up, "can I sell it through a payment link", is not documented: abstaining was correct.)
+    second = client.post("/v1/chat", json={"message": "And how fast do I receive the money from it?",
                                             "conversation_id": first["conversation_id"]}, headers=headers).json()
     assert second["intents"] == ["product_knowledge"] and second["sources"], second
+    assert "2" in second["answer"] and any("crediario" in s["url"] for s in second["sources"]), second["answer"]
 
 
 def test_ac38_compound_request_live(live):

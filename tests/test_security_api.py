@@ -73,3 +73,17 @@ def test_health_reports_degraded_with_empty_knowledge_base(client, kb):
     assert client.get("/health").json()["status"] == "ok"
     kb.hits = []
     assert client.get("/health").json() == {"status": "degraded", "knowledge_base_chunks": 0}
+
+
+def test_idempotency_key_replays_the_stored_answer(client, auth, llm):
+    """REQ-API-03 / AC-53: a retried request with the same Idempotency-Key runs no agent and returns the same answer;
+    the same key with a different body is rejected; keys are scoped per identity."""
+    h = {**auth("cliente1988"), "Idempotency-Key": "retry-1"}
+    first = client.post("/v1/chat", json={"message": "How does Pix work?"}, headers=h)
+    calls = len(llm.calls)
+    again = client.post("/v1/chat", json={"message": "How does Pix work?"}, headers=h)
+    assert again.status_code == 200 and again.json() == first.json() and len(llm.calls) == calls
+    assert client.post("/v1/chat", json={"message": "Other question"}, headers=h).status_code == 422
+    other = client.post("/v1/chat", json={"message": "How does Pix work?"},
+                        headers={**auth("cliente2000"), "Idempotency-Key": "retry-1"})
+    assert other.json()["request_id"] != first.json()["request_id"]

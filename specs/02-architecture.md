@@ -37,6 +37,7 @@ Operator ──Bearer JWT (role=operator)──► /v1/operator/tickets … clai
 | ADR-11 | Reviewer → at most one revision for Support answers | Catches numbers/dates not present in tool output; bounded so latency and cost stay predictable. |
 | ADR-12 | Approval gate for money-moving tools | The model proposes, a human disposes; the tool validates limits before any ticket is opened. |
 | ADR-13 | Rolling summary in batches of 4 turns | Prompt size stays bounded; the summary is persisted, so it survives restarts. |
+| ADR-15 | Moderation ‖ planner; idempotency keys in SQLite | Trade-off: a flagged message costs one planner call, every normal request saves the moderation round-trip. Idempotency rows are kept forever in this demo (production: TTL). |
 | ADR-14 | Lexical product-page boost on top of dense retrieval (candidate pool 3×top-k) | Dense similarity alone ranked a FAQ about a related product above the product's page; a URL-slug match is cheap, explainable and needs no extra index. Trade-off: a BM25 hybrid would generalise further. |
 
 ## RAG pipeline

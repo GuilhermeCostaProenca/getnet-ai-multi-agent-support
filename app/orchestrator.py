@@ -46,8 +46,8 @@ class _Trace:
             self.steps.append(TraceStep(step=name, detail=holder["detail"],
                                         duration_ms=int((time.perf_counter() - started) * 1000)))
 
-    def add(self, name: str, detail: str) -> None:
-        self.steps.append(TraceStep(step=name, detail=detail))
+    def add(self, name: str, detail: str, duration_ms: int | None = None) -> None:
+        self.steps.append(TraceStep(step=name, detail=detail, duration_ms=duration_ms or 0))
 
 
 @dataclass
@@ -113,19 +113,21 @@ class Orchestrator:
             outcome = _Outcome(policy_text("blocked", guess_language(check.text)), ["guardrail"])
         else:
             outcome = None
-            if self._moderation:
-                with trace.step("moderation") as s:
-                    try:
-                        flagged = self._llm.moderate(check.text)
-                        s["detail"] = f"flagged={flagged}"
-                        if flagged:
-                            input_flags.append("moderation_flagged")
-                            outcome = _Outcome(policy_text("unsafe", guess_language(check.text)), ["guardrail"])
-                    except Exception as exc:  # noqa: BLE001 - fail open, the planner still screens `unsafe`
+            # Moderation ‖ planner (latency): the plan is discarded when moderation flags the message.
+            with ThreadPoolExecutor(2) as pool:
+                mod_f = pool.submit(copy_context().run, self._moderate, check.text) if self._moderation else None
+                plan_f = pool.submit(copy_context().run, self._plan, check.text, history)
+                if mod_f is not None:
+                    flagged, detail, ms = mod_f.result()
+                    trace.add("moderation", detail, ms)
+                    if flagged is None:  # fail open, the planner still screens `unsafe`
                         input_flags.append("moderation_unavailable")
-                        s["detail"] = f"unavailable: {type(exc).__name__}"
+                    elif flagged:
+                        input_flags.append("moderation_flagged")
+                        outcome = _Outcome(policy_text("unsafe", guess_language(check.text)), ["guardrail"])
+                planned = plan_f.result()
             if outcome is None:
-                outcome = self._plan_and_run(cid, user_id, check.text, history, history_msgs, trace)
+                outcome = self._plan_and_run(cid, user_id, check.text, history, history_msgs, trace, planned)
 
         language = outcome.plan.language if outcome.plan else guess_language(check.text)
         answer, output_flags = guardrails.check_output(outcome.answer)
@@ -152,16 +154,29 @@ class Orchestrator:
         return response
 
     # --- planning and dispatch -------------------------------------------------------------------------
+    def _moderate(self, text: str) -> tuple[bool | None, str, int]:
+        started = time.perf_counter()
+        try:
+            flagged: bool | None = self._llm.moderate(text)
+            detail = f"flagged={flagged}"
+        except Exception as exc:  # noqa: BLE001
+            flagged, detail = None, f"unavailable: {type(exc).__name__}"
+        return flagged, detail, int((time.perf_counter() - started) * 1000)
+
+    def _plan(self, text: str, history: str) -> tuple[Plan | None, str, int]:
+        started = time.perf_counter()
+        try:
+            plan: Plan | None = self._planner.plan(text, history)
+            detail = (f"tasks={[t.intent for t in plan.tasks]} conf={plan.confidence:.2f} "
+                      f"clarify={plan.needs_clarification} lang={plan.language}")
+        except Exception as exc:  # noqa: BLE001
+            plan, detail = None, f"failed: {type(exc).__name__}"
+        return plan, detail, int((time.perf_counter() - started) * 1000)
+
     def _plan_and_run(self, cid: str, user_id: str, text: str, history: str, history_msgs: list[dict[str, Any]],
-                      trace: _Trace) -> _Outcome:
-        plan: Plan | None = None
-        with trace.step("planner") as s:
-            try:
-                plan = self._planner.plan(text, history)
-                s["detail"] = (f"tasks={[t.intent for t in plan.tasks]} conf={plan.confidence:.2f} "
-                               f"clarify={plan.needs_clarification} lang={plan.language}")
-            except Exception as exc:  # noqa: BLE001
-                s["detail"] = f"failed: {type(exc).__name__}"
+                      trace: _Trace, planned: tuple[Plan | None, str, int]) -> _Outcome:
+        plan, detail, ms = planned
+        trace.add("planner", detail, ms)
         if plan is None:  # escalate after the planner step is closed, so the trace stays in order
             return self._escalate(cid, user_id, "planner_failure", guess_language(text), trace, None)
 

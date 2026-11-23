@@ -126,11 +126,15 @@ def test_ac41_agent_failure_hands_off(chat, llm):
     assert r["handoff"]["required"] and r["handoff"]["reason"].startswith("agent_failure")
 
 
-def test_moderation_flag_blocks_before_planning(chat, llm):
+def test_moderation_flag_blocks_before_any_agent_runs(chat, llm):
+    """Moderation runs in parallel with the planner (latency); a flag discards the plan, so no agent or tool runs."""
     llm.flagged = True
+    llm.tool_plan = [("get_sales_and_settlements", {})]
     r = chat("how to clone a card").json()
     assert r["agents"] == ["guardrail"] and "moderation_flagged" in r["guardrails"]["input_flags"]
-    assert not llm.called("plan")
+    assert r["tools_used"] == [] and r["intents"] == []
+    steps = [s["step"] for s in r["trace"]]
+    assert "moderation" in steps and not {"support_agent", "knowledge_agent.rag", "knowledge_agent.web"} & set(steps)
 
 
 def test_moderation_outage_fails_open(chat, llm):

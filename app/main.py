@@ -1,11 +1,12 @@
 """FastAPI entry point: /v1 API with JWT authentication, roles and rate limiting (specs/03-api-contract.md)."""
 
+import hashlib
 import logging
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -88,15 +89,28 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None, k
 
     # --- merchant ------------------------------------------------------------------------------------
     @app.post("/v1/chat", response_model=ChatResponse, tags=["merchant"])
-    def chat(req: ChatRequest, p: Principal = Depends(merchant)) -> ChatResponse:
+    def chat(req: ChatRequest, p: Principal = Depends(merchant),
+             idempotency_key: str | None = Header(None, max_length=64)) -> ChatResponse:
         if req.user_id and req.user_id != p.sub:  # SEC-02: identity comes from the token, never the body
             raise HTTPException(403, "user_id does not match the authenticated identity")
+        # Idempotency-Key: a client retry (timeout, double click) replays the stored answer instead of running the
+        # agents again — no duplicate messages, tickets or approval requests. Scoped per identity.
+        request_hash = hashlib.sha256(req.model_dump_json().encode()).hexdigest()
+        if idempotency_key:
+            stored = app.state.store.get_idempotent(p.sub, idempotency_key)
+            if stored:
+                if stored["request_hash"] != request_hash:
+                    raise HTTPException(422, "Idempotency-Key was already used with a different request")
+                return ChatResponse.model_validate_json(stored["response"])
         if not limiter.allow(p.sub):
             raise HTTPException(429, "rate limit exceeded")
         try:
-            return app.state.orchestrator.handle(p.sub, req)
+            response = app.state.orchestrator.handle(p.sub, req)
         except NotFound as exc:
             raise HTTPException(404, "conversation not found") from exc
+        if idempotency_key:
+            app.state.store.save_idempotent(p.sub, idempotency_key, request_hash, response.model_dump_json())
+        return response
 
     @app.get("/v1/conversations/{conversation_id}", response_model=ConversationView, tags=["merchant"])
     def conversation(conversation_id: str, p: Principal = Depends(merchant)) -> ConversationView:

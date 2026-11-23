@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS tickets (
     status TEXT NOT NULL, reason TEXT NOT NULL, context TEXT NOT NULL, operator_id TEXT, resolution TEXT,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status, created_at);
+CREATE TABLE IF NOT EXISTS idempotency (
+    user_id TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL, response TEXT NOT NULL,
+    created_at TEXT NOT NULL, PRIMARY KEY (user_id, key));
 """
 
 
@@ -60,6 +63,14 @@ class Store:
     def _rows(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
         with self._lock:
             return [dict(r) for r in self._db.execute(sql, params).fetchall()]
+
+    # --- idempotency (REQ-API-03) ----------------------------------------------------------------------
+    def get_idempotent(self, user_id: str, key: str) -> dict[str, Any] | None:
+        rows = self._rows("SELECT request_hash, response FROM idempotency WHERE user_id=? AND key=?", (user_id, key))
+        return rows[0] if rows else None
+
+    def save_idempotent(self, user_id: str, key: str, request_hash: str, response: str) -> None:
+        self._write("INSERT OR IGNORE INTO idempotency VALUES (?,?,?,?,?)", (user_id, key, request_hash, response, _now()))
 
     # --- conversations -------------------------------------------------------------------------------
     def open_conversation(self, conversation_id: str | None, user_id: str) -> dict[str, Any]:

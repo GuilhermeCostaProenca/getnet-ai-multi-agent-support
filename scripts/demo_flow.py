@@ -37,13 +37,14 @@ def main() -> None:
     r1 = chat("How many installments can I split a sale into with the crediário?")
     cid = r1["conversation_id"]
     show("1 product question     ", r1)
-    r2 = chat("And can I also sell it with the payment link on WhatsApp?", cid)
+    r2 = chat("And how fast do I receive the money from it?", cid)  # "it" = the previous turn's product
     show("2 follow-up (memory)   ", r2)
     planner = next(s["detail"] for s in r2["trace"] if s["step"] == "planner")
     print("  planner:", planner)
     r3 = chat("What's the crediário limit? Also write me a poem about it.", cid)
     show("3 compound request     ", r3)
-    show("4a absurd question     ", chat("Does Getnet offer a cashback program for merchants on Saturn?", cid))
+    # own conversation: depending on the Getnet-restricted web search it abstains or escalates (both by design)
+    show("4a absurd question     ", chat("Does Getnet offer a cashback program for merchants on Saturn?"))
     r4 = chat("I'd like to talk to a human attendant about my fees, please.", cid)
     show("4b asks for a human    ", r4)
     ticket = r4["handoff"]["ticket_id"]

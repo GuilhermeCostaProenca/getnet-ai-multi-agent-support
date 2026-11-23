@@ -19,23 +19,25 @@ gaps found in the v1 evaluation (7.3/10). v1 remains on `main` history / tags `v
 | **Orchestration "plan-once"** | Multi-task plans (compound requests answered in part instead of refused); clarify before handoff; observe→replan (RAG → Getnet-restricted web → human); **reviewer → bounded revision** of Support answers; parallel tasks | AC-38..41, AC-46 |
 | **Evaluation 7.7** — no metrics | Labelled dataset + harness: routing/tool accuracy, refusal P/R, Recall@K, MRR, PT×EN, pass^k, **LLM-as-judge**, latency, tokens; CI on every push | AC-45, [`eval/report.md`](eval/report.md) |
 | RAG 8.2 | **Multi-query retrieval** (PT rewrite + original wording) + **product-page boost** (dense + lexical signal) — fixed the wrong crediário answers the judge found (24x from a related product instead of 48x) | AC-51, AC-52 |
-| Observability 6.5 | Token usage per request (metered across parallel agents), trace, structured JSON logs, **`/metrics`** (requests, handoffs by reason, guardrail flags, tokens, latency p50/p95) | AC-44, AC-50 |
+| Memory & Resilience (cont.) | **`Idempotency-Key`** on `POST /v1/chat`: retries replay the stored answer (no duplicate tickets/approvals); key reuse with another body → 422 | AC-53 |
+| Observability 6.5 | **Moderation ‖ planner** in parallel (one network round-trip less per request) · token usage per request (metered across parallel agents), trace, structured JSON logs, **`/metrics`** (requests, handoffs by reason, guardrail flags, tokens, latency p50/p95) | AC-44, AC-50, AC-54 |
 
 ### Measured results (final code, 2026-11-23)
 
 | Check | Result |
 |---|---|
-| Deterministic tests (`pytest`, fake LLM, CI on every push) | **54 passed** |
+| Deterministic tests (`pytest`, fake LLM, CI on every push) | **55 passed** |
 | Live integration (`pytest -m integration`, real model, the 10 challenge scenarios + follow-up + compound) | **12 / 12** |
 | Eval — 26 labelled cases × 3 runs = 78 real requests ([`eval/report.md`](eval/report.md)) | routing **1.0** (EN 1.0 / PT 1.0) · tool accuracy **1.0** · refusal P/R **1.0 / 1.0** · pass^3 **1.0** · 0 unexpected handoffs |
-| LLM-as-judge (same 78 answers) | answers the question **0.987** · right language **1.0** · KB answers grounded in excerpts **0.917** · score **4.49 / 5** |
+| LLM-as-judge (same 78 answers) | answers the question **1.0** · right language **1.0** · KB answers grounded in excerpts **0.889** (0.86–0.92 across the last three runs) · score **4.33 / 5** |
 | Retrieval (raw message → gold page) | Recall@1 0.909 · Recall@3 **1.0** · MRR 0.955 |
-| Cost / latency | ~4.9k tokens per request · p50 3.7 s · p95 8.9 s |
-| Container E2E (`scripts/demo_flow.py`) | 401/403/403 on auth abuse · follow-up from memory · compound partial answer · explicit human request → ticket · paused conversation answered with **0 LLM calls** · foreign conversation → 404 · operator claim/reply/resolve · agents resume · `/metrics` consistent |
+| Cost / latency | ~5.0k tokens per request · p50 3.5 s · p95 9.2 s (eval, 8 concurrent workers) |
+| Container E2E (`scripts/demo_flow.py`) | 401/403/403 on auth abuse · follow-up from memory · compound partial answer · explicit human request → ticket · paused conversation answered with **0 LLM calls** · foreign conversation → 404 · operator claim/reply/resolve · agents resume · `/metrics` consistent · `Idempotency-Key` retry replayed in 3 ms with no duplicate messages |
 
 How the eval changed the code: the judge's first runs found (1) tool/web answers penalised as "ungrounded" — a judge blind
 spot, fixed by judging grounding only where excerpts exist; (2) a real error — "crediário" answered with a related
-product's 24x limit instead of 48x — fixed by multi-query retrieval + a product-page boost (grounded 0.72 → 0.92).
+product's 24x limit instead of 48x — fixed by multi-query retrieval + a product-page boost (grounded 0.72 → ~0.89);
+(3) English questions occasionally answered in Portuguese (the excerpts are PT) — fixed in the RAG prompt (language 0.97 → 1.0).
 `scripts/evaluate.py --gate` fails below routing 0.95 / refusal P,R 0.95 / tool 0.9 / Recall@5 0.9; it runs weekly or on
 demand in [`eval.yml`](.github/workflows/eval.yml) (needs `OPENAI_API_KEY` and `JWT_SECRET` secrets).
 Known limit: the judge does not see tool results, so it still marks some correct support answers down for "unverifiable"
