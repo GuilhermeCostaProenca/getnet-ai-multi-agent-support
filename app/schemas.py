@@ -149,4 +149,5 @@ class AgentResult(BaseModel):
     tools_used: list[ToolCall] = []
     needs_handoff: bool = False
     handoff_reason: str | None = None
+    pending_actions: list[dict[str, Any]] = []
     detail: str = ""

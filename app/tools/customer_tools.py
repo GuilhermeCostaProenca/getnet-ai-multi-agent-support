@@ -152,9 +152,26 @@ def diagnose_terminal(user_id: str, terminal_id: str | None = None, error_code: 
             "data_source": MOCK_LABEL}
 
 
+def request_receivables_advance(user_id: str, amount: float) -> dict[str, Any]:
+    """Money-moving action: never executed by the agent. It is validated and turned into a request that a human must
+    approve (HITL approval gate); the orchestrator opens the ticket."""
+    sales = get_sales_and_settlements(user_id, days_back=30)
+    if "error" in sales:
+        return sales
+    available = sales["total_scheduled"]
+    if not isinstance(amount, (int, float)) or amount <= 0:
+        return {"error": "invalid_amount", "data_source": MOCK_LABEL}
+    if amount > available:
+        return {"error": "amount_exceeds_available", "requested": amount, "available": available, "data_source": MOCK_LABEL}
+    return {"status": "pending_human_approval", "action": "receivables_advance", "requested": round(float(amount), 2),
+            "available": available, "note": "Fees follow the merchant's contract; a specialist confirms before anything is executed.",
+            "data_source": MOCK_LABEL}
+
+
 TOOL_FUNCTIONS = {"get_merchant_profile": get_merchant_profile,
                   "get_sales_and_settlements": get_sales_and_settlements,
-                  "diagnose_terminal": diagnose_terminal}
+                  "diagnose_terminal": diagnose_terminal,
+                  "request_receivables_advance": request_receivables_advance}
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {"type": "function", "name": "get_merchant_profile", "strict": True,
@@ -171,6 +188,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "properties": {"terminal_id": {"type": ["string", "null"], "description": "Terminal id or null for all"},
                                    "error_code": {"type": ["string", "null"], "description": "Decline/error code shown, or null"}},
                     "required": ["terminal_id", "error_code"], "additionalProperties": False}},
+    {"type": "function", "name": "request_receivables_advance", "strict": True,
+     "description": "Request an advance (antecipação) of the current merchant's scheduled receivables. Does NOT execute "
+                    "it: validates the amount and creates a request that a human specialist must approve.",
+     "parameters": {"type": "object", "properties": {"amount": {"type": "number", "description": "Amount in BRL"}},
+                    "required": ["amount"], "additionalProperties": False}},
 ]
 
 

@@ -185,7 +185,8 @@ class Orchestrator:
             sources=[s for r in results for s in r.sources], tools=[t for r in results for t in r.tools_used])
         failed = [r for r in results if r.needs_handoff]
         if failed:
-            details = {"intents": [t.intent for t in plan.tasks], "tools_used": [t.name for t in outcome.tools]}
+            details = {"intents": [t.intent for t in plan.tasks], "tools_used": [t.name for t in outcome.tools],
+                       "pending_actions": [a for r in results for a in r.pending_actions]}
             esc = self._escalate(cid, user_id, failed[0].handoff_reason or "agent_request", lang, trace, plan, details)
             outcome.answer = _join(outcome.answer, esc.answer)
             outcome.agents.append("escalation")

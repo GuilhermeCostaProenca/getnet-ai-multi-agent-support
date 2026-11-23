@@ -51,6 +51,17 @@ def test_ac37_operator_claims_replies_and_resolves_then_agents_resume(chat, llm,
     assert "Human support closed ticket" in llm.called("plan")[-1] and "1.99%" in llm.called("plan")[-1]
 
 
+def test_money_moving_action_requires_human_approval(chat, llm, client, auth):
+    from tests.conftest import plan, task
+    llm.default_plan = plan(task("customer_support", "advance R$ 300 of my receivables"))
+    llm.tool_plan = [("request_receivables_advance", {"amount": 300})]
+    r = chat("Antecipe R$ 300 dos meus recebíveis").json()
+    assert r["handoff"]["required"] and r["handoff"]["reason"] == "approval_required" and r["status"] == "awaiting_human"
+    ticket = client.get("/v1/operator/tickets?status=open", headers=auth("op1", "operator")).json()[0]
+    action = ticket["context"]["pending_actions"][0]
+    assert action["action"] == "receivables_advance" and action["requested"] == 300 and action["status"] == "pending_human_approval"
+
+
 def test_unknown_ticket_returns_404(client, auth):
     assert client.post("/v1/operator/tickets/HO-NOPE/claim", headers=auth("op1", "operator")).status_code == 404
 

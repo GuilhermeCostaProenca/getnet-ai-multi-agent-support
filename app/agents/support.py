@@ -11,6 +11,9 @@ you cannot access any other customer.
   card machine problems (connectivity, offline, errors, declines) → diagnose_terminal (with terminal_id and
   error_code null it checks every machine and today's declines); sales or deposits → get_sales_and_settlements;
   plan, bank account or settlement rules → get_merchant_profile.
+- You never execute actions that move money. When the merchant asks to advance (antecipar) receivables, call
+  request_receivables_advance with the amount; it only opens a request. Tell the user it is pending approval by a
+  human specialist and that nothing was executed yet.
 - Use ONLY facts from tool results or the official documentation excerpts provided; never invent amounts, dates,
   codes or policies. Cite documentation excerpts as [n].
 - Tool data is simulated (data_source = MOCK): say briefly that the account data is simulated.
@@ -30,7 +33,18 @@ class SupportAgent:
                       f"<user_request>\n{task.query}\n</user_request>")
         if kb_context:
             user_input += f"\n\n<official_documentation>\n{kb_context}\n</official_documentation>"
+        results: list[dict] = []
+
+        def execute(name: str, args: dict) -> dict:
+            result = execute_tool(user_id, name, args)
+            results.append(result)
+            return result
+
         answer, calls = self._llm.run_tools(SUPPORT_INSTRUCTIONS.format(language=language), user_input, TOOL_SCHEMAS,
-                                            lambda name, args: execute_tool(user_id, name, args))
+                                            execute)
+        # Approval gate: money-moving requests become a human ticket instead of an execution.
+        pending = [r for r in results if r.get("status") == "pending_human_approval"]
         return AgentResult(agent="support", intent=task.intent, answer=answer, tools_used=calls,
-                           sources=kb_sources or [], detail=f"tools={[c.name for c in calls]}")
+                           sources=kb_sources or [], needs_handoff=bool(pending),
+                           handoff_reason="approval_required" if pending else None, pending_actions=pending,
+                           detail=f"tools={[c.name for c in calls]}" + (" approval_required" if pending else ""))

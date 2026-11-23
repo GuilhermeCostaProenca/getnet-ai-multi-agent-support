@@ -52,6 +52,15 @@ def test_ac42_business_day_in_sao_paulo():
     assert business_today(datetime(2026, 11, 4, 1, 30, tzinfo=timezone.utc)) == date(2026, 11, 3)
 
 
+def test_receivables_advance_is_validated_and_never_executed():
+    from app.tools.customer_tools import request_receivables_advance
+    ok = request_receivables_advance("cliente1988", 100)
+    assert ok["status"] == "pending_human_approval" and ok["requested"] == 100.0
+    assert request_receivables_advance("cliente1988", 10**9)["error"] == "amount_exceeds_available"
+    assert request_receivables_advance("cliente1988", -5)["error"] == "invalid_amount"
+    assert request_receivables_advance("ghost", 10)["error"] == "customer_not_found"
+
+
 def test_ac42_tools_are_labelled_mock_and_robust():
     for name, args in [("get_merchant_profile", {}), ("get_sales_and_settlements", {"days_back": 7}),
                        ("diagnose_terminal", {"terminal_id": None, "error_code": "51"})]:
