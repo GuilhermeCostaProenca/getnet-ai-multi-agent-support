@@ -20,9 +20,10 @@ def task(intent: str = "product_knowledge", query: str = "q", consult_kb: bool =
     return Task(intent=intent, query=query, retrieval_query="consulta", consult_knowledge_base=consult_kb)
 
 
-def plan(*tasks: Task, confidence: float = 0.95, clarify: bool = False, question: str = "", language: str = "en") -> Plan:
+def plan(*tasks: Task, confidence: float = 0.95, clarify: bool = False, question: str = "", language: str = "en",
+         wants_human: bool = False) -> Plan:
     return Plan(language=language, confidence=confidence, needs_clarification=clarify, clarification_question=question,
-                tasks=list(tasks), rationale="test")
+                wants_human=wants_human, tasks=list(tasks), rationale="test")
 
 
 class FakeLLM:

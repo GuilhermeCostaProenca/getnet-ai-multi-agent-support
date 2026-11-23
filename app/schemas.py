@@ -131,6 +131,7 @@ class Plan(BaseModel):
     confidence: float = Field(..., description="0.0-1.0, heuristic self-assessment")
     needs_clarification: bool
     clarification_question: str
+    wants_human: bool = Field(..., description="true when the user explicitly asks to talk to a human attendant")
     tasks: list[Task]
     rationale: str
 

@@ -68,6 +68,13 @@ def test_ac39_clarify_then_escalate(chat, llm):
     assert second["handoff"]["required"] and second["handoff"]["reason"] == "unresolved_ambiguity"
 
 
+def test_ac36_explicit_request_for_a_human_escalates(chat, llm):
+    llm.default_plan = plan(wants_human=True, language="pt")
+    r = chat("quero falar com um atendente").json()
+    assert r["handoff"]["required"] and r["handoff"]["reason"] == "user_requested_human"
+    assert r["status"] == "awaiting_human" and "protocolo" in r["answer"] and not llm.called("parse_kb")
+
+
 def test_ac40_replans_to_getnet_web_when_kb_has_no_grounding(chat, llm, kb):
     kb.hits = []
     llm.getnet_web_result = ("From getnet.com.br: ...", [Source(title="Getnet", url="https://site.getnet.com.br/x/")])

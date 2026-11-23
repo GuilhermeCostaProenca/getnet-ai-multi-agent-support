@@ -161,6 +161,9 @@ class Orchestrator:
         lang = plan.language
         if any(t.intent == "unsafe" for t in plan.tasks):
             return _Outcome(policy_text("unsafe", lang), ["guardrail"], plan)
+        if plan.wants_human:  # an explicit request for a person always reaches one (HITL-01)
+            return self._escalate(cid, user_id, "user_requested_human", lang, trace, plan,
+                                  {"intents": [t.intent for t in plan.tasks]})
 
         if plan.needs_clarification or not plan.tasks or plan.confidence < self._min_confidence:  # ORC-03
             asked = self._trailing_clarifications(history_msgs)
