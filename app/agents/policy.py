@@ -39,6 +39,10 @@ _TEXT = {
         "pt": "Um especialista humano está cuidando desta conversa (protocolo {ticket}). Adicionei sua mensagem ao "
               "atendimento; a resposta dele vai aparecer aqui.",
     },
+    "specialist_reply": {
+        "en": "Latest reply from the specialist: {reply}",
+        "pt": "Última resposta do especialista: {reply}",
+    },
     "not_found": {
         "en": "I couldn't find this in Getnet's official content.",
         "pt": "Não encontrei essa informação no conteúdo oficial da Getnet.",

@@ -97,8 +97,11 @@ class Orchestrator:
         if conv["status"] == "awaiting_human":  # HITL-02: the human owns the conversation; no agent runs
             ticket = self._store.active_ticket(cid)
             ticket_id = ticket["id"] if ticket else "-"
-            trace.add("conversation_paused", f"ticket={ticket_id}")
-            outcome = _Outcome(policy_text("awaiting_human", guess_language(check.text), ticket=ticket_id),
+            lang = guess_language(check.text)
+            replies = [m["content"] for m in history_msgs if m["role"] == "operator"]
+            trace.add("conversation_paused", f"ticket={ticket_id} operator_replies={len(replies)}")
+            outcome = _Outcome(_join(policy_text("awaiting_human", lang, ticket=ticket_id),
+                                     policy_text("specialist_reply", lang, reply=replies[-1]) if replies else ""),
                                ["handoff"], handoff=Handoff(required=True, ticket_id=ticket_id, reason="awaiting_human"))
         elif check.blocked:
             outcome = _Outcome(policy_text("blocked", guess_language(check.text)), ["guardrail"])

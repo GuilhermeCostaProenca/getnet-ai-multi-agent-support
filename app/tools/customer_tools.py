@@ -165,7 +165,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
      "parameters": {"type": "object", "properties": {"days_back": {"type": "integer", "description": "Days back to include (1-30)"}},
                     "required": ["days_back"], "additionalProperties": False}},
     {"type": "function", "name": "diagnose_terminal", "strict": True,
-     "description": "Diagnose the current merchant's card machines (connectivity, signal, firmware) and explain decline codes.",
+     "description": "Diagnose the current merchant's card machines (connectivity, offline status, signal, firmware) and "
+                    "explain decline/error codes. Call with nulls to check every machine and today's declines.",
      "parameters": {"type": "object",
                     "properties": {"terminal_id": {"type": ["string", "null"], "description": "Terminal id or null for all"},
                                    "error_code": {"type": ["string", "null"], "description": "Decline/error code shown, or null"}},

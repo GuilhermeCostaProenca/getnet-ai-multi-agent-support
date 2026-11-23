@@ -41,6 +41,8 @@ def test_ac37_operator_claims_replies_and_resolves_then_agents_resume(chat, llm,
     conversation = client.get(f"/v1/conversations/{cid}", headers=auth()).json()
     assert conversation["status"] == "awaiting_human"
     assert any(m["role"] == "operator" and "1.99%" in m["content"] for m in conversation["messages"])
+    paused = chat("so what is the fee?", conversation_id=cid).json()  # still paused: the reply is surfaced, no agent runs
+    assert paused["agents"] == ["handoff"] and "1.99%" in paused["answer"]
     resolved = client.post(f"/v1/operator/tickets/{ticket}/resolve", json={"resolution": "fee explained"}, headers=op)
     assert resolved.json()["status"] == "resolved"
     kb.hits = [GETNET_HIT]
