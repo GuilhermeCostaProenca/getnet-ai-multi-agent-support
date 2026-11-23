@@ -1,0 +1,31 @@
+name: eval (real model)
+
+# Manual / scheduled quality gate: runs the labelled evaluation against the real model.
+# Requires repository secrets OPENAI_API_KEY and JWT_SECRET. Kept out of the push pipeline because it costs money.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, Monday 06:00 UTC
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Ingest Getnet pages
+        run: python -m app.rag.ingest --reset
+      - name: Evaluate with regression gate
+        run: python scripts/evaluate.py --repeats 2 --gate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: eval/report.*

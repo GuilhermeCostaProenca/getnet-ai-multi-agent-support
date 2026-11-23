@@ -26,6 +26,10 @@ from app.schemas import ChatRequest  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Regression thresholds (set slightly below the measured baseline in eval/report.md).
+GATE = {"routing_accuracy": 0.95, "refusal_precision": 0.95, "refusal_recall": 0.95, "tool_accuracy": 0.9}
+GATE_RECALL_AT_5 = 0.9
+
 JUDGE_INSTRUCTIONS = """\
 You grade answers of a Getnet merchant-support assistant. Be strict and literal, but grade against THIS assistant's
 design:
@@ -114,7 +118,10 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--out", default=str(ROOT / "eval" / "report"))
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM-as-judge quality grading")
+    parser.add_argument("--gate", action="store_true",
+                        help="exit 1 when a metric falls below the regression thresholds (CI gate)")
     args = parser.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles/redirects default to cp1252
 
     cases = load_cases(Path(args.dataset))
     settings = Settings(rate_limit_per_minute=1_000_000)
@@ -192,6 +199,16 @@ def main() -> None:
               "signal, not ground truth._"]
     out.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
+
+    if args.gate:
+        breaches = [f"{k}={report.get(k)} < {v}" for k, v in GATE.items()
+                    if report.get(k) is not None and report[k] < v]
+        if retrieval["all"] and retrieval["all"]["recall@5"] < GATE_RECALL_AT_5:
+            breaches.append(f"recall@5={retrieval['all']['recall@5']} < {GATE_RECALL_AT_5}")
+        if breaches:
+            print("REGRESSION GATE FAILED:", "; ".join(breaches))
+            sys.exit(1)
+        print("Regression gate passed.")
 
 
 if __name__ == "__main__":

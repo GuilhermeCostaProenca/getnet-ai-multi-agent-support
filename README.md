@@ -18,10 +18,29 @@ gaps found in the v1 evaluation (7.3/10). v1 remains on `main` history / tags `v
 | **Human Oversight 4.0** — in-memory ticket only | Persistent tickets with operator context; conversation paused (`awaiting_human`); operator API claim → reply → resolve; agents resume with the human outcome in history; explicit "talk to a human" always escalates; **money-moving actions need human approval** | AC-36, AC-37, AC-47, AC-48 |
 | **Orchestration "plan-once"** | Multi-task plans (compound requests answered in part instead of refused); clarify before handoff; observe→replan (RAG → Getnet-restricted web → human); **reviewer → bounded revision** of Support answers; parallel tasks | AC-38..41, AC-46 |
 | **Evaluation 7.7** — no metrics | Labelled dataset + harness: routing/tool accuracy, refusal P/R, Recall@K, MRR, PT×EN, pass^k, **LLM-as-judge**, latency, tokens; CI on every push | AC-45, [`eval/report.md`](eval/report.md) |
-| RAG 8.2 | **Multi-query retrieval** (PT rewrite + original wording) — fixed wrong crediário answers found by the judge | AC-51 |
+| RAG 8.2 | **Multi-query retrieval** (PT rewrite + original wording) + **product-page boost** (dense + lexical signal) — fixed the wrong crediário answers the judge found (24x from a related product instead of 48x) | AC-51, AC-52 |
 | Observability 6.5 | Token usage per request (metered across parallel agents), trace, structured JSON logs, **`/metrics`** (requests, handoffs by reason, guardrail flags, tokens, latency p50/p95) | AC-44, AC-50 |
 
-<!-- RESULTS -->
+### Measured results (final code, 2026-11-23)
+
+| Check | Result |
+|---|---|
+| Deterministic tests (`pytest`, fake LLM, CI on every push) | **54 passed** |
+| Live integration (`pytest -m integration`, real model, the 10 challenge scenarios + follow-up + compound) | **12 / 12** |
+| Eval — 26 labelled cases × 3 runs = 78 real requests ([`eval/report.md`](eval/report.md)) | routing **1.0** (EN 1.0 / PT 1.0) · tool accuracy **1.0** · refusal P/R **1.0 / 1.0** · pass^3 **1.0** · 0 unexpected handoffs |
+| LLM-as-judge (same 78 answers) | answers the question **0.987** · right language **1.0** · KB answers grounded in excerpts **0.917** · score **4.49 / 5** |
+| Retrieval (raw message → gold page) | Recall@1 0.909 · Recall@3 **1.0** · MRR 0.955 |
+| Cost / latency | ~4.9k tokens per request · p50 3.7 s · p95 8.9 s |
+| Container E2E (`scripts/demo_flow.py`) | 401/403/403 on auth abuse · follow-up from memory · compound partial answer · explicit human request → ticket · paused conversation answered with **0 LLM calls** · foreign conversation → 404 · operator claim/reply/resolve · agents resume · `/metrics` consistent |
+
+How the eval changed the code: the judge's first runs found (1) tool/web answers penalised as "ungrounded" — a judge blind
+spot, fixed by judging grounding only where excerpts exist; (2) a real error — "crediário" answered with a related
+product's 24x limit instead of 48x — fixed by multi-query retrieval + a product-page boost (grounded 0.72 → 0.92).
+`scripts/evaluate.py --gate` fails below routing 0.95 / refusal P,R 0.95 / tool 0.9 / Recall@5 0.9; it runs weekly or on
+demand in [`eval.yml`](.github/workflows/eval.yml) (needs `OPENAI_API_KEY` and `JWT_SECRET` secrets).
+Known limit: the judge does not see tool results, so it still marks some correct support answers down for "unverifiable"
+account details; the in-product reviewer is what checks those against tool output.
+
 
 ## Quick start
 
@@ -107,8 +126,10 @@ Curated sources ([`app/rag/sources.py`](app/rag/sources.py)) — the example que
 (`/duvidas/`) is the densest page; getnet.net/en adds the global view → clean (`head/nav/header/footer/script/form`
 removed; lines repeated in ≥ 50 % of pages dropped) → ~1000-char chunks, 150 overlap → `text-embedding-3-small` →
 Chroma (cosine) → **multi-query retrieval**: the planner's Portuguese rewrite and the user's own wording are embedded in
-one call and merged by best score (the rewrite bridges EN→PT; the original keeps specific terms — the judge caught
-"crediário up to 48x" ranked 5th by the rewrite alone) → top-8, similarity ≥ 0.30 → grounded generation with citations
+one call and merged by best score (the rewrite bridges EN→PT; the original keeps specific terms) → **product-page boost**:
+chunks from the page whose URL slug matches a term of the question (`/crediario/`) get +0.08, so the product's own page
+outranks FAQ passages about related products (the judge caught "crediário" answered with Parcelado Emissor's 24x;
+after the fix 6/6 live answers say 48x) → top-8, similarity ≥ 0.30 → grounded generation with citations
 + self-check → replan → handoff.
 
 ## Guardrails (defense in depth)

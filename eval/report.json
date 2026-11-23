@@ -1,0 +1,243 @@
+{
+  "cases": 26,
+  "repeats": 3,
+  "runs": 78,
+  "routing_accuracy": 1.0,
+  "routing_accuracy_en": 1.0,
+  "routing_accuracy_pt": 1.0,
+  "tool_accuracy": 1.0,
+  "refusal_precision": 1.0,
+  "refusal_recall": 1.0,
+  "pass^3": 1.0,
+  "unexpected_handoffs": 0,
+  "judge_answers_question": 0.987,
+  "judge_language_ok": 1,
+  "judge_grounded_kb_answers": 0.917,
+  "judge_score_avg_1to5": 4.49,
+  "latency_ms_p50": 3711,
+  "latency_ms_p95": 8944,
+  "tokens_per_request_avg": 4876,
+  "retrieval": {
+    "all": {
+      "recall@1": 0.909,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "recall@8": 1.0,
+      "mrr": 0.955,
+      "n": 11
+    },
+    "en": {
+      "recall@1": 0.833,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "recall@8": 1.0,
+      "mrr": 0.917,
+      "n": 6
+    },
+    "pt": {
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "recall@8": 1.0,
+      "mrr": 1.0,
+      "n": 5
+    }
+  },
+  "failures": [],
+  "low_quality": [
+    {
+      "id": "PT-01",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "product_knowledge"
+      ],
+      "agents": [
+        "knowledge"
+      ],
+      "latency_ms": 6839,
+      "tokens": 12249,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": false,
+      "judge_score": 3,
+      "judge_reason": "A resposta atende à pergunta e está em português, mas mistura informações não sustentadas pelos trechos oficiais fornecidos, como ‘bateria de até 12h’, ‘Pix e QR Code’ e os critérios de faturamento citados. Pelos excertos, a diferença explicitamente documentada entre Get Clássica e Get Smart é que ambas têm chip de dados + Wi‑Fi, e as faixas de faturamento/taxas de uso podem variar; não há suporte nos trechos para a lista de recursos apresentada."
+    },
+    {
+      "id": "PT-05",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "customer_support"
+      ],
+      "agents": [
+        "support"
+      ],
+      "latency_ms": 9525,
+      "tokens": 9048,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": null,
+      "judge_score": 2,
+      "judge_reason": "A resposta está em português e tenta orientar o problema, então atende parcialmente. Porém inclui muitos dados específicos da conta/maquininha sem apoio verificável nas informações fornecidas, e afirmações como 'a versão mais recente é 3.4.0' e detalhes de recusas parecem inventados neste contexto. Também não há base nos excertos oficiais para essas políticas ou diagnósticos. O conselho genérico de verificar Wi‑Fi, aproximar do roteador, reconectar e reiniciar é coerente, mas o restante torna a resposta pouco confiável."
+    },
+    {
+      "id": "AC-06",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "product_knowledge"
+      ],
+      "agents": [
+        "knowledge"
+      ],
+      "latency_ms": 4043,
+      "tokens": 3540,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": false,
+      "judge_score": 3,
+      "judge_reason": "The answer addresses the question and is in Portuguese, but it includes an unsupported claim that the FAQ says there is no additional fee to use the app and cites source [3] incorrectly; excerpt [2] supports this, while [3] is unrelated and does not mention the app. It also overstates that exact rules, rates, or deadlines were not found, although some related details about Antecipação Automática and app-based anticipation are in the excerpts. The response is cautious and mostly coherent, but not fully grounded in the provided sources."
+    },
+    {
+      "id": "PT-05",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "customer_support"
+      ],
+      "agents": [
+        "support"
+      ],
+      "latency_ms": 6810,
+      "tokens": 7935,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": null,
+      "judge_score": 2,
+      "judge_reason": "Responde ao problema com passos plausíveis e está em português, mas inventa diagnóstico específico da conta e detalhes do dispositivo sem apoio verificável nos excertos oficiais fornecidos. Como não há trechos oficiais, a resposta deveria ser mais cautelosa e não afirmar dados concretos de aparelho/offline/firmware como fatos."
+    },
+    {
+      "id": "AC-05",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "customer_support"
+      ],
+      "agents": [
+        "support"
+      ],
+      "latency_ms": 6362,
+      "tokens": 7424,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": null,
+      "judge_score": 2,
+      "judge_reason": "The reply addresses the connectivity problem and gives sensible troubleshooting steps, so it is broadly useful. However, it invents account-specific machine details without evidence from the visible data, and it presents several product-specific facts (model/status/firmware/update path) as if verified. The mention that the account data is simulated helps, but grounding is still weak because no official excerpts are provided and the answer makes unsupported specific claims about the device and menu path."
+    },
+    {
+      "id": "AC-06",
+      "intents_ok": true,
+      "tools_ok": true,
+      "correct": true,
+      "refused": false,
+      "handoff": false,
+      "intents": [
+        "product_knowledge"
+      ],
+      "agents": [
+        "knowledge"
+      ],
+      "latency_ms": 3623,
+      "tokens": 3522,
+      "judge_answers": true,
+      "judge_language": true,
+      "judge_grounded": false,
+      "judge_score": 3,
+      "judge_reason": "The answer addresses the question and is in English, but it incorrectly cites a non-official source [3] for a claim about the Getnet Brazil app and adds a detail (“no additional fee”) without grounding it in the provided Getnet excerpts. It also says it could not find a detailed explanation, which is partially true, but the response is too sparse to be considered complete. The official excerpts do support that anticipation can be done in the Getnet Brasil app and that Automática is subject to individual approval, but the answer should have relied only on those excerpts and avoided the unsupported citation."
+    }
+  ],
+  "retrieval_per_case": [
+    {
+      "id": "AC-01",
+      "language": "en",
+      "first_rank": 1,
+      "top_score": 0.4412
+    },
+    {
+      "id": "AC-04",
+      "language": "en",
+      "first_rank": 1,
+      "top_score": 0.5752
+    },
+    {
+      "id": "AC-06",
+      "language": "en",
+      "first_rank": 1,
+      "top_score": 0.5325
+    },
+    {
+      "id": "AC-09",
+      "language": "en",
+      "first_rank": 1,
+      "top_score": 0.6033
+    },
+    {
+      "id": "AC-10",
+      "language": "en",
+      "first_rank": 2,
+      "top_score": 0.5024
+    },
+    {
+      "id": "PT-01",
+      "language": "pt",
+      "first_rank": 1,
+      "top_score": 0.515
+    },
+    {
+      "id": "PT-04",
+      "language": "pt",
+      "first_rank": 1,
+      "top_score": 0.7179
+    },
+    {
+      "id": "PT-06",
+      "language": "pt",
+      "first_rank": 1,
+      "top_score": 0.7174
+    },
+    {
+      "id": "PT-09",
+      "language": "pt",
+      "first_rank": 1,
+      "top_score": 0.6092
+    },
+    {
+      "id": "PT-10",
+      "language": "pt",
+      "first_rank": 1,
+      "top_score": 0.615
+    },
+    {
+      "id": "MIX-01",
+      "language": "en",
+      "first_rank": 1,
+      "top_score": 0.5029
+    }
+  ]
+}
