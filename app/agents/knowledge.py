@@ -37,11 +37,21 @@ class KnowledgeAgent:
         self._top_k = top_k
         self._min_similarity = min_similarity
 
-    def retrieve(self, query: str) -> list[Hit]:
-        if self._store.count() == 0:
+    def retrieve(self, *queries: str) -> list[Hit]:
+        """Multi-query retrieval: the planner's Portuguese rewrite plus the user's own wording, merged by best score.
+        The rewrite bridges EN questions to the PT corpus; the original keeps specific terms the rewrite can drop
+        (measured: 'crediário up to 48x' was ranked 5th by the rewrite alone and 1st by the original)."""
+        unique = list(dict.fromkeys(q for q in queries if q and q.strip()))
+        if not unique or self._store.count() == 0:
             return []
-        hits = self._store.query(self._llm.embed([query])[0], self._top_k)
-        return [h for h in hits if h.score >= self._min_similarity]
+        best: dict[tuple[str, str], Hit] = {}
+        for vector in self._llm.embed(unique):
+            for h in self._store.query(vector, self._top_k):
+                key = (h.url, h.text[:120])
+                if key not in best or best[key].score < h.score:
+                    best[key] = h
+        ranked = sorted(best.values(), key=lambda h: h.score, reverse=True)
+        return [h for h in ranked if h.score >= self._min_similarity][: self._top_k]
 
     @staticmethod
     def format_context(hits: list[Hit]) -> str:
@@ -57,7 +67,7 @@ class KnowledgeAgent:
 
     def answer_product(self, task: Task, language: str, history: str) -> AgentResult:
         """RAG → (replan) site-restricted web search → hand off. One bounded retry, no open-ended loop."""
-        hits = self.retrieve(task.retrieval_query or task.query)
+        hits = self.retrieve(task.retrieval_query, task.query)
         if hits:
             user_input = (f"<conversation_history>\n{history or '(none)'}\n</conversation_history>\n\n"
                           f"<context>\n{self.format_context(hits)}\n</context>\n\n<question>\n{task.query}\n</question>")

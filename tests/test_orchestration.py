@@ -12,6 +12,13 @@ def test_product_question_uses_rag_with_sources(chat, llm):
     assert r["sources"][0]["url"].startswith("https://site.getnet.com.br") and llm.called("parse_kb")
 
 
+def test_retrieval_uses_rewrite_and_original_query(chat, llm):
+    llm.default_plan = plan(task("product_knowledge", "How many installments with crediário?"))
+    chat("How many installments with crediário?")
+    embedded = llm.called("embed")[0]
+    assert embedded == ["consulta", "How many installments with crediário?"]  # one embedding call, two queries
+
+
 def test_general_info_uses_web_search(chat, llm):
     llm.default_plan = plan(task("general_info", "euro rate today"))
     r = chat("Euro rate today?").json()

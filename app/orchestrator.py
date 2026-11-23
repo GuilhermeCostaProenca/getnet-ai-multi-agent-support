@@ -217,7 +217,7 @@ class Orchestrator:
                 else:  # customer_support, optionally preceded by KB retrieval (agent sequence)
                     kb_context, kb_sources = "", []
                     if task.consult_knowledge_base:
-                        hits = self._knowledge.retrieve(task.retrieval_query or task.query)
+                        hits = self._knowledge.retrieve(task.retrieval_query, task.query)
                         kb_context, kb_sources = self._knowledge.format_context(hits), self._knowledge.to_sources(hits)
                     result = self._support.handle(user_id, task, lang, history, kb_context, kb_sources)
                 s["detail"] = result.detail
