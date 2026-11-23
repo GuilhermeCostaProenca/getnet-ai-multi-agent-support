@@ -25,6 +25,18 @@ def test_ac03_support_calls_settlement_tool(chat, llm):
     assert r["agents"] == ["support"] and [t["name"] for t in r["tools_used"]] == ["get_sales_and_settlements"]
 
 
+def test_ac46_reviewer_checks_support_answer_against_tool_results(chat, llm):
+    llm.default_plan = plan(task("customer_support", "yesterday's deposits"))
+    llm.tool_plan = [("get_sales_and_settlements", {"days_back": 1})]
+    ok = chat("When will yesterday's sales be deposited?").json()
+    assert llm.called("review") and not llm.called("revise") and ok["answer"] == "support answer"
+    assert '"expected_deposit_date"' in llm.called("review")[0]  # the reviewer sees the real tool output
+    llm.review_ok = False
+    revised = chat("When will yesterday's sales be deposited?").json()
+    assert revised["answer"] == "revised support answer"
+    assert "review=revised" in next(s["detail"] for s in revised["trace"] if s["step"] == "support_agent")
+
+
 def test_ac05_support_receives_official_documentation(chat, llm):
     llm.default_plan = plan(task("customer_support", "machine offline", consult_kb=True))
     llm.tool_plan = [("diagnose_terminal", {"terminal_id": None, "error_code": None})]

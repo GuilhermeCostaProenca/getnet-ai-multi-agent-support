@@ -1,8 +1,34 @@
-"""Customer Support agent: tool calling over the authenticated merchant's (mock) data (REQ-SUP-01, SEC-02)."""
+"""Customer Support agent: tool calling over the authenticated merchant's (mock) data, followed by a reviewer that
+checks the answer against the tool results and triggers one bounded revision (REQ-SUP-01, SEC-02, ORC-07)."""
+
+import json
+
+from pydantic import BaseModel
 
 from app.llm import LLMClient
 from app.schemas import AgentResult, Source, Task
 from app.tools.customer_tools import TOOL_SCHEMAS, execute_tool
+
+REVIEW_INSTRUCTIONS = """\
+You review a support answer before it is sent. Compare it with the tool results (the only source of account facts).
+consistent=false if the answer states any amount, date, status, code, terminal or account detail that is absent from or
+contradicts the tool results, omits that the data is simulated, or claims an action was executed when the tool only
+opened a request. List the concrete problems in issues ("" when consistent).
+"""
+
+REVISE_INSTRUCTIONS = """\
+Rewrite the support answer fixing the listed issues. Use only facts from the tool results, keep it short and
+step-by-step, keep the user's language ({language}), and keep the note that the account data is simulated.
+"""
+
+
+class Review(BaseModel):
+    consistent: bool
+    issues: str
+
+
+class Revision(BaseModel):
+    answer: str
 
 SUPPORT_INSTRUCTIONS = """\
 You are Getnet's Customer Support Agent for merchants. The tools return the CURRENT authenticated merchant's data;
@@ -24,8 +50,9 @@ you cannot access any other customer.
 
 
 class SupportAgent:
-    def __init__(self, llm: LLMClient):
+    def __init__(self, llm: LLMClient, review: bool = True):
         self._llm = llm
+        self._review = review
 
     def handle(self, user_id: str, task: Task, language: str, history: str, kb_context: str = "",
                kb_sources: list[Source] | None = None) -> AgentResult:
@@ -42,9 +69,19 @@ class SupportAgent:
 
         answer, calls = self._llm.run_tools(SUPPORT_INSTRUCTIONS.format(language=language), user_input, TOOL_SCHEMAS,
                                             execute)
+        review_note = ""
+        if self._review and results:  # observe → critique → refine, bounded to one revision
+            evidence = f"<tool_results>\n{json.dumps(results, default=str, ensure_ascii=False)[:12000]}\n</tool_results>"
+            verdict = self._llm.parse(REVIEW_INSTRUCTIONS, f"{evidence}\n<answer>\n{answer}\n</answer>", Review)
+            review_note = " review=consistent"
+            if not verdict.consistent:
+                answer = self._llm.parse(REVISE_INSTRUCTIONS.format(language=language),
+                                         f"{evidence}\n<answer>\n{answer}\n</answer>\n<issues>\n{verdict.issues}\n</issues>",
+                                         Revision).answer
+                review_note = f" review=revised ({verdict.issues[:80]})"
         # Approval gate: money-moving requests become a human ticket instead of an execution.
         pending = [r for r in results if r.get("status") == "pending_human_approval"]
         return AgentResult(agent="support", intent=task.intent, answer=answer, tools_used=calls,
                            sources=kb_sources or [], needs_handoff=bool(pending),
                            handoff_reason="approval_required" if pending else None, pending_actions=pending,
-                           detail=f"tools={[c.name for c in calls]}" + (" approval_required" if pending else ""))
+                           detail=f"tools={[c.name for c in calls]}{review_note}" + (" approval_required" if pending else ""))

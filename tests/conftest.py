@@ -38,6 +38,7 @@ class FakeLLM:
         self.tool_plan: list[tuple[str, dict[str, Any]]] = []
         self.tool_results: list[dict[str, Any]] = []
         self.flagged = False
+        self.review_ok = True
         self.fail_on: set[str] = set()
         self.calls: list[tuple[str, Any]] = []
 
@@ -56,6 +57,12 @@ class FakeLLM:
         if schema.__name__ == "Summary":
             self._record("summary", user_input)
             return schema(text=f"SUMMARY#{len(self.called('summary'))}")
+        if schema.__name__ == "Review":
+            self._record("review", user_input)
+            return schema(consistent=self.review_ok, issues="" if self.review_ok else "amount R$ 999 not in tool results")
+        if schema.__name__ == "Revision":
+            self._record("revise", user_input)
+            return schema(answer="revised support answer")
         self._record("plan", user_input)
         return self.plans.pop(0) if self.plans else self.default_plan
 
