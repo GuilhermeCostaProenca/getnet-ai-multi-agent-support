@@ -134,6 +134,16 @@ def test_ac34_pii_redacted_before_llm_and_on_output(chat, llm):
     assert "pii_card" in r["guardrails"]["input_flags"] and "output_pii_card" in r["guardrails"]["output_flags"]
 
 
+def test_ac44_metrics_endpoint_counts_requests_handoffs_and_flags(chat, client, llm, kb):
+    chat("card 4111 1111 1111 1111 charged twice")
+    kb.hits = []
+    chat("What is the fee of product X?")
+    text = client.get("/metrics").text
+    assert 'chat_requests_total{agents="knowledge"} 1' in text
+    assert 'handoffs_total{reason="no_grounded_answer"} 1' in text
+    assert 'guardrail_flags_total{flag="pii_card"} 1' in text and 'chat_latency_ms{quantile="0.95"}' in text
+
+
 def test_ac44_response_carries_trace_usage_and_request_id(chat):
     r = chat("Pix?").json()
     assert r["request_id"] and steps(r)[:3] == ["input_guardrails", "moderation", "planner"]

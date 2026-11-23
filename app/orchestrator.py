@@ -20,6 +20,7 @@ from app.agents.planner import Planner
 from app.agents.policy import guess_language, policy_text
 from app.agents.support import SupportAgent
 from app.llm import LLMClient, start_meter
+from app.observability import Metrics
 from app.schemas import (IN_SCOPE, AgentResult, ChatRequest, ChatResponse, GuardrailReport, Handoff, Plan, Source,
                          Task, ToolCall, TraceStep)
 from app.storage import Store
@@ -65,7 +66,8 @@ def _join(*parts: str) -> str:
 class Orchestrator:
     def __init__(self, llm: LLMClient, store: Store, planner: Planner, knowledge: KnowledgeAgent,
                  support: SupportAgent, handoff: HandoffService, *, min_confidence: float = 0.55,
-                 max_clarifications: int = 1, history_window: int = 10, moderation_enabled: bool = True):
+                 max_clarifications: int = 1, history_window: int = 10, moderation_enabled: bool = True,
+                 metrics: Metrics | None = None):
         self._llm = llm
         self._store = store
         self._planner = planner
@@ -76,6 +78,7 @@ class Orchestrator:
         self._max_clarifications = max_clarifications
         self._window = history_window
         self._moderation = moderation_enabled
+        self._metrics = metrics or Metrics()
 
     # --- entry point -----------------------------------------------------------------------------------
     def handle(self, user_id: str, req: ChatRequest) -> ChatResponse:
@@ -135,6 +138,7 @@ class Orchestrator:
             sources=outcome.sources, tools_used=outcome.tools, handoff=outcome.handoff,
             guardrails=GuardrailReport(input_flags=input_flags, output_flags=output_flags), usage=meter.usage,
             trace=trace.steps, latency_ms=int((time.perf_counter() - started) * 1000))
+        self._record_metrics(response)
         log.info("chat_completed", extra={
             "request_id": request_id, "conversation_id": cid, "user_id": user_id, "message_redacted": check.text[:200],
             "agents": response.agents, "intents": response.intents, "confidence": response.confidence,
@@ -228,6 +232,20 @@ class Orchestrator:
             text, handoff = self._handoff.escalate(cid, user_id, reason, lang, details)
             s["detail"] = f"ticket={handoff.ticket_id} reason={reason}"
         return _Outcome(text, ["escalation"], plan, handoff=handoff)
+
+    def _record_metrics(self, r: ChatResponse) -> None:
+        m = self._metrics
+        m.inc("chat_requests_total", {"agents": "+".join(r.agents)})
+        for intent in r.intents:
+            m.inc("planned_tasks_total", {"intent": intent})
+        if r.handoff.required:
+            m.inc("handoffs_total", {"reason": r.handoff.reason or "unknown"})
+        for flag in r.guardrails.input_flags + r.guardrails.output_flags:
+            m.inc("guardrail_flags_total", {"flag": flag})
+        m.inc("llm_calls_total", value=r.usage.llm_calls)
+        m.inc("llm_tokens_total", {"type": "input"}, r.usage.input_tokens)
+        m.inc("llm_tokens_total", {"type": "output"}, r.usage.output_tokens)
+        m.observe_latency(r.latency_ms)
 
     @staticmethod
     def _trailing_clarifications(history_msgs: list[dict[str, Any]]) -> int:

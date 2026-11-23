@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.agents.handoff import Conflict, HandoffService
@@ -15,7 +16,7 @@ from app.agents.planner import Planner
 from app.agents.support import SupportAgent
 from app.config import Settings, get_settings
 from app.llm import LLMClient, OpenAIClient
-from app.observability import configure_logging
+from app.observability import Metrics, configure_logging
 from app.orchestrator import Orchestrator
 from app.rag.ingest import ingest
 from app.rag.store import ChromaStore, KnowledgeStore
@@ -27,13 +28,14 @@ from app.storage import NotFound, Store
 log = logging.getLogger(__name__)
 
 
-def build_services(settings: Settings, llm: LLMClient, kb: KnowledgeStore, store: Store) -> tuple[Orchestrator, HandoffService]:
+def build_services(settings: Settings, llm: LLMClient, kb: KnowledgeStore, store: Store,
+                   metrics: Metrics) -> tuple[Orchestrator, HandoffService]:
     handoff = HandoffService(store)
     orchestrator = Orchestrator(
         llm, store, Planner(llm), KnowledgeAgent(llm, kb, settings.rag_top_k, settings.rag_min_similarity),
         SupportAgent(llm), handoff, min_confidence=settings.planner_min_confidence,
         max_clarifications=settings.max_clarifications, history_window=settings.history_window,
-        moderation_enabled=settings.moderation_enabled)
+        moderation_enabled=settings.moderation_enabled, metrics=metrics)
     return orchestrator, handoff
 
 
@@ -46,6 +48,7 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None, k
     settings = settings or get_settings()
     bearer = HTTPBearer(auto_error=False)
     limiter = RateLimiter(settings.rate_limit_per_minute)
+    metrics = Metrics()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -61,7 +64,7 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None, k
             except Exception:  # noqa: BLE001 - the API still starts; product answers will hand off
                 log.exception("startup_ingest_failed")
         app.state.orchestrator, app.state.handoff = build_services(settings, app.state.llm, app.state.kb,
-                                                                   app.state.store)
+                                                                   app.state.store, metrics)
         yield
 
     app = FastAPI(title="Getnet Multi-Agent Support", version="2.0.0", lifespan=lifespan)
@@ -136,6 +139,11 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None, k
         def dev_token(req: DevTokenRequest) -> TokenResponse:
             """Demo/testing only (ENABLE_DEV_TOKENS). Production tokens come from the company identity provider."""
             return TokenResponse(access_token=issue_token(settings, req.user_id, req.role))
+
+    @app.get("/metrics", tags=["ops"], response_class=PlainTextResponse)
+    def metrics_endpoint() -> str:
+        """Prometheus text format (scraped from the internal network in production)."""
+        return metrics.render()
 
     @app.get("/health", tags=["ops"])
     def health() -> dict[str, Any]:
