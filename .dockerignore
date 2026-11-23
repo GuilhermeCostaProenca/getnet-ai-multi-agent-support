@@ -1,0 +1,14 @@
+.env
+.env.*
+.git
+.github
+.venv
+venv
+data
+__pycache__
+*.pyc
+.pytest_cache
+tests
+specs
+*.md
+REGUA_REVISAO_V2.md

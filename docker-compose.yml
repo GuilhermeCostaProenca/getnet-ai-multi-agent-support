@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    image: getnet-multi-agent-support:2.0.0
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /app/data/app.db
+      CHROMA_PATH: /app/data/chroma
+      # Demo only: exposes POST /v1/auth/dev-token so evaluators can get tokens from Swagger.
+      ENABLE_DEV_TOKENS: "true"
+    volumes:
+      - app-data:/app/data   # conversations, tickets and the vector index survive restarts
+    restart: unless-stopped
+
+volumes:
+  app-data:
