@@ -27,7 +27,15 @@ from app.schemas import ChatRequest  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 
 JUDGE_INSTRUCTIONS = """\
-You grade answers of a Getnet merchant-support assistant. Be strict and literal.
+You grade answers of a Getnet merchant-support assistant. Be strict and literal, but grade against THIS assistant's
+design:
+- Support answers use the merchant's account data returned by tools (simulated MOCK data that you do not see). Do not
+  penalize account-specific numbers, dates, terminals or codes; check that the answer addresses the problem coherently
+  and says the account data is simulated.
+- General-information answers (weather, exchange rates) come from web search; facts attributed to a cited web source
+  are acceptable.
+- The assistant must refuse unrelated work (math, code, translations, poems, competitor comparisons). A polite refusal
+  that redirects to what it can do is the CORRECT answer (score 4-5); answering such a request would be wrong.
 - answers_question: the answer addresses what the user asked (a correct refusal of an out-of-scope or unsafe request
   counts as addressing it; asking a clarifying question does not).
 - language_ok: the answer is in the language of the user's message.
