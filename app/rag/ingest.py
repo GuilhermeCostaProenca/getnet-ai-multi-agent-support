@@ -82,16 +82,24 @@ def fetch_pages(urls: list[str]) -> list[Page]:
 
 
 def ingest(llm: LLMClient, store: KnowledgeStore, urls: list[str] | None = None) -> dict[str, int]:
+    """Incremental: chunk ids are content hashes, so unchanged chunks are not re-embedded (no cost), changed ones get
+    a new id and chunks that disappeared from the site are deleted. `--reset` remains for a full rebuild."""
     pages = remove_boilerplate(fetch_pages(urls or SOURCE_URLS))
     ids, texts, metas = [], [], []
     for page in pages:
         for i, chunk in enumerate(chunk_text(page.lines)):
-            ids.append(hashlib.sha1(f"{page.url}#{i}".encode()).hexdigest())
+            ids.append(hashlib.sha1(f"{page.url}|{chunk}".encode()).hexdigest())
             texts.append(chunk)
             metas.append({"url": page.url, "title": page.title, "chunk_index": i})
-    if texts:
-        store.add(ids, texts, llm.embed(texts), metas)
-    stats = {"pages": len(pages), "chunks": len(texts)}
+    existing = store.ids()
+    new = [i for i, cid in enumerate(ids) if cid not in existing]
+    if new:
+        store.add([ids[i] for i in new], [texts[i] for i in new], llm.embed([texts[i] for i in new]),
+                  [metas[i] for i in new])
+    stale = sorted(existing - set(ids)) if pages else []  # never wipe the index when every fetch failed
+    store.delete(stale)
+    stats = {"pages": len(pages), "chunks": len(texts), "embedded": len(new), "unchanged": len(ids) - len(new),
+             "deleted": len(stale)}
     log.info("ingest_completed", extra=stats)
     return stats
 

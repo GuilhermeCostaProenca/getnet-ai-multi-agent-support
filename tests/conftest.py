@@ -98,13 +98,19 @@ class MemoryKB:
         return len(self.hits)
 
     def add(self, ids, texts, embeddings, metadatas) -> None:
-        pass
+        self._ids = self.ids() | set(ids)
 
     def query(self, embedding, k):
         return self.hits[:k]
 
     def reset(self) -> None:
         self.hits = []
+
+    def ids(self) -> set[str]:
+        return set(getattr(self, "_ids", set()))
+
+    def delete(self, ids) -> None:
+        self._ids = self.ids() - set(ids)
 
 
 def make_settings(**overrides: Any) -> Settings:

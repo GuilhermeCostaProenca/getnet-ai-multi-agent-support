@@ -5,6 +5,9 @@ merchant's timezone, terminal diagnosis, decline-code interpretation) and every 
 The LLM-facing schemas expose no user id: the server binds the authenticated identity when executing a tool.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -196,12 +199,20 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 
+TOOL_TIMEOUT_SECONDS = 5.0
+_TOOL_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tool")
+
+
 def execute_tool(user_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Dispatch with the authenticated identity bound by the server; any LLM-supplied user_id is dropped."""
     fn = TOOL_FUNCTIONS.get(name)
     if fn is None:
         return {"error": "unknown_tool", "name": name}
-    try:
-        return fn(user_id, **{k: v for k, v in arguments.items() if k != "user_id"})
+    args = {k: v for k, v in arguments.items() if k != "user_id"}
+    future = _TOOL_POOL.submit(fn, user_id, **args)
+    try:  # per-tool deadline: a slow backend becomes an error the agent can explain, not a hung request
+        return future.result(timeout=TOOL_TIMEOUT_SECONDS)
+    except FuturesTimeout:
+        return {"error": "tool_timeout", "name": name, "timeout_seconds": TOOL_TIMEOUT_SECONDS}
     except TypeError as exc:
         return {"error": "invalid_arguments", "detail": str(exc)}

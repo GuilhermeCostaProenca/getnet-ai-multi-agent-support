@@ -21,6 +21,10 @@ class KnowledgeStore(Protocol):
 
     def reset(self) -> None: ...
 
+    def ids(self) -> set[str]: ...
+
+    def delete(self, ids: list[str]) -> None: ...
+
 
 class ChromaStore:
     def __init__(self, path: str, collection: str):
@@ -44,6 +48,13 @@ class ChromaStore:
         res = self._collection.query(query_embeddings=[embedding], n_results=k)
         return [Hit(text=t, title=m.get("title", ""), url=m.get("url", ""), score=round(1 - d, 4))
                 for t, m, d in zip(res["documents"][0], res["metadatas"][0], res["distances"][0])]
+
+    def ids(self) -> set[str]:
+        return set(self._collection.get(include=[])["ids"])
+
+    def delete(self, ids: list[str]) -> None:
+        if ids:
+            self._collection.delete(ids=ids)
 
     def reset(self) -> None:
         self._client.delete_collection(self._name)

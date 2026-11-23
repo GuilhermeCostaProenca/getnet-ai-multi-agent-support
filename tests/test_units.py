@@ -123,3 +123,53 @@ def test_retrieval_slug_boost_prefers_the_named_products_page():
     agent = KnowledgeAgent(FakeLLM(), MemoryKB([faq, product]), top_k=8, min_similarity=0.3)
     assert [h.url for h in agent.retrieve("Em quantas parcelas posso dividir no Crediário?")][0].endswith("/crediario/")
     assert [h.url for h in agent.retrieve("Quais as taxas de parcelamento?")][0].endswith("/duvidas/")
+
+
+def test_tool_timeout_becomes_an_error_result(monkeypatch):
+    """D6 / AC-55: a slow backend returns tool_timeout instead of hanging the request."""
+    import time as _time
+    from app.tools import customer_tools as ct
+
+    monkeypatch.setattr(ct, "TOOL_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setitem(ct.TOOL_FUNCTIONS, "slow", lambda user_id: _time.sleep(0.5) or {"ok": True})
+    assert ct.execute_tool("cliente1988", "slow", {})["error"] == "tool_timeout"
+
+
+def test_ingestion_is_incremental_by_content_hash(monkeypatch):
+    """C9 / AC-56: re-ingesting unchanged pages embeds nothing; a changed chunk is re-embedded, the old one deleted."""
+    from app.rag import ingest as ing
+    from tests.conftest import FakeLLM, MemoryKB
+
+    pages = [Page(url="https://site.getnet.com.br/pix/", title="Pix", lines=["Pix na maquininha. " * 20])]
+    monkeypatch.setattr(ing, "fetch_pages", lambda urls: pages)
+    kb, llm = MemoryKB([]), FakeLLM()
+    first = ing.ingest(llm, kb, ["x"])
+    assert first["embedded"] == first["chunks"] > 0
+    assert ing.ingest(llm, kb, ["x"])["embedded"] == 0
+    pages[0] = Page(url=pages[0].url, title="Pix", lines=["Pix com QR Code. " * 20])
+    changed = ing.ingest(llm, kb, ["x"])
+    assert changed["embedded"] > 0 and changed["deleted"] == first["chunks"]
+
+
+def test_chat_model_falls_back_once_on_outage_errors_only():
+    """F5 / AC-57: connection/5xx errors on the primary model retry once on the fallback; other errors propagate."""
+    import httpx
+    import openai
+    import pytest
+
+    client = OpenAIClient(Settings(_env_file=None, openai_api_key="test", jwt_secret="x"))
+    seen: list[str] = []
+
+    def flaky(model, **kw):
+        seen.append(model)
+        if model == client._model:
+            raise openai.APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+        return "ok"
+
+    assert client._call(flaky, input="hi") == "ok" and seen == [client._model, client._fallback_model]
+
+    def bad_request(model, **kw):
+        raise ValueError("schema error")
+
+    with pytest.raises(ValueError):
+        client._call(bad_request, input="hi")

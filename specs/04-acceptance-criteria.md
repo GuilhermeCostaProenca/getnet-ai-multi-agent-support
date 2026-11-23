@@ -44,6 +44,9 @@ Test names carry the AC id.
 | AC-49 | Long conversation → older turns summarized and sent as `[summary of earlier turns]`; old DBs migrated | MEM-04 | U |
 | AC-50 | `/metrics` counts requests, handoffs per reason and guardrail flags; exposes latency quantiles | OBS-02 | U |
 | AC-51 | Retrieval embeds the rewrite and the original query in one call and merges results | KNW-04 | U, E |
+| AC-55 | A tool slower than its deadline returns `tool_timeout` instead of hanging the request | D6 / SUP | U |
+| AC-56 | Re-ingesting unchanged pages embeds nothing; a changed chunk is re-embedded and the old one deleted | KNW-05 | U |
+| AC-57 | Connection/timeout/5xx on the chat model → one retry on the fallback model; other errors propagate | API-04 | U |
 | AC-53 | Same `Idempotency-Key` + same body → identical response and zero LLM calls; different body → 422; other identity unaffected | API-03 | U |
 | AC-54 | A moderation flag yields a refusal with no agent step and no tool call even though the planner ran in parallel | OBS-03 | U |
 | AC-52 | A chunk from the named product's page outranks a higher-scoring FAQ chunk about a related product | KNW-04 | U, E |

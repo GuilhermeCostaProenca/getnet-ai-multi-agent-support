@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     chat_model: str = "gpt-5.4-mini"
+    fallback_chat_model: str = "gpt-4.1-mini"  # used once on outage-type errors; "" disables
     embedding_model: str = "text-embedding-3-small"
     moderation_model: str = "omni-moderation-latest"
     llm_timeout_seconds: float = 60.0

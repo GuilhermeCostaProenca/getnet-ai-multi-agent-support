@@ -9,7 +9,7 @@ from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any, Protocol, TypeVar
 
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAI
 from pydantic import BaseModel
 
 from app.config import Settings
@@ -69,21 +69,32 @@ class OpenAIClient:
     def __init__(self, settings: Settings):
         self._client = OpenAI(api_key=settings.openai_api_key, timeout=settings.llm_timeout_seconds, max_retries=2)
         self._model = settings.chat_model
+        self._fallback_model = settings.fallback_chat_model
         self._embedding_model = settings.embedding_model
         self._moderation_model = settings.moderation_model
 
+    def _call(self, method: Callable[..., Any], **kwargs: Any) -> Any:
+        """Primary chat model; on an outage-type error (connection, timeout, 5xx - after the SDK's own retries) one
+        attempt on the fallback model. Quota/auth/validation errors are not retried: another model would not help."""
+        try:
+            return method(model=self._model, **kwargs)
+        except (APIConnectionError, APITimeoutError, InternalServerError):
+            if not self._fallback_model or self._fallback_model == self._model:
+                raise
+            return method(model=self._fallback_model, **kwargs)
+
     def parse(self, instructions: str, user_input: str, schema: type[T]) -> T:
-        resp = self._client.responses.parse(model=self._model, instructions=instructions, input=user_input,
-                                            text_format=schema)
+        resp = self._call(self._client.responses.parse, instructions=instructions, input=user_input,
+                          text_format=schema)
         _record(resp.usage)
         if resp.output_parsed is None:
             raise ValueError("LLM returned no structured output")
         return resp.output_parsed
 
     def web_search(self, instructions: str, question: str) -> tuple[str, list[Source]]:
-        resp = self._client.responses.create(model=self._model, instructions=instructions, input=question,
-                                             tools=[{"type": "web_search"}],
-                                             include=["web_search_call.action.sources"])
+        resp = self._call(self._client.responses.create, instructions=instructions, input=question,
+                          tools=[{"type": "web_search"}],
+                          include=["web_search_call.action.sources"])
         _record(resp.usage)
         cited: dict[str, Source] = {}
         consulted: dict[str, Source] = {}
@@ -106,8 +117,8 @@ class OpenAIClient:
         conversation: list[Any] = [{"role": "user", "content": user_input}]
         calls: list[ToolCall] = []
         for _ in range(self.MAX_TOOL_ROUNDS):
-            resp = self._client.responses.create(model=self._model, instructions=instructions, input=conversation,
-                                                 tools=tools)
+            resp = self._call(self._client.responses.create, instructions=instructions, input=conversation,
+                              tools=tools)
             _record(resp.usage)
             function_calls = [item for item in resp.output if item.type == "function_call"]
             if not function_calls:
