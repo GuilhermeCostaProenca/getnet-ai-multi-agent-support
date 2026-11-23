@@ -171,3 +171,12 @@ def test_ac44_response_carries_trace_usage_and_request_id(chat):
     r = chat("Pix?").json()
     assert r["request_id"] and steps(r)[:4] == ["input_guardrails", "memory", "moderation", "planner"]
     assert set(r["usage"]) == {"llm_calls", "input_tokens", "output_tokens"}
+
+
+def test_model_refusal_in_planner_is_a_policy_refusal_not_an_escalation(chat, llm):
+    """AC-59: a provider-level refusal (Claude stop_reason=refusal) is answered with the unsafe policy, no ticket."""
+    from app.llm import ModelRefusal
+
+    llm.fail_on = {"plan": ModelRefusal("stop_reason=refusal")}
+    r = chat("how to clone a card").json()
+    assert r["agents"] == ["guardrail"] and not r["handoff"]["required"]

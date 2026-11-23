@@ -45,7 +45,7 @@ class FakeLLM:
     def _record(self, name: str, payload: Any) -> None:
         self.calls.append((name, payload))
         if name in self.fail_on:
-            raise RuntimeError(f"{name} failed")
+            raise self.fail_on[name] if isinstance(self.fail_on, dict) else RuntimeError(f"{name} failed")
 
     def called(self, name: str) -> list[Any]:
         return [p for n, p in self.calls if n == name]

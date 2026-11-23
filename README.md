@@ -189,6 +189,16 @@ specs, code, tests, Docker and evaluation were produced inside the window. Devel
 programmer under my direction (I defined the approach, reviewed, ran and verified everything); inside the product, LLMs
 do structured planning, tool calling, grounded generation, web search and moderation.
 
+**Provider portability (after the window).** At 19:57 the OpenAI account ran out of credits, so — outside the
+60-minute window, to keep the system runnable — the `LLMClient` protocol got a second implementation:
+`LLM_PROVIDER=anthropic` runs planning, agents, the reviewer, the tool loop and web search on Claude (Messages API,
+JSON-schema structured outputs, `web_search_20260209`). Anthropic has no embeddings or moderation endpoint, so in that
+mode retrieval uses **BM25** over the stored chunks (with the planner's Portuguese rewrite, no re-ingestion) and the
+planner's `unsafe` intent is the screen; a provider-level refusal becomes the `unsafe` policy, not an escalation.
+Verified live on Claude: crediário → 48x from the KB, terminal diagnosis via `diagnose_terminal`, settlements via
+`get_sales_and_settlements`, dollar rate via web search with sources, compound request answered in part, card-cloning
+request refused, prompt injection blocked. The eval numbers above were measured with OpenAI.
+
 **Timebox log (transparency).** Window opened 15:38:06; work stopped at 16:22 (44 min) when the power went out. The
 remaining ~16 min were used after power returned (from 19:55): per-tool timeout, fallback chat model, incremental
 ingestion, query-embedding cache and idempotency TTL (commits after `8d585f6`). These are covered by deterministic tests only: the OpenAI account had run out

@@ -51,10 +51,16 @@ class KnowledgeAgent:
         self._store = store
         self._top_k = top_k
         self._min_similarity = min_similarity
+        self._bm25 = None  # set by use_lexical(): BM25 instead of dense retrieval (provider without embeddings)
         self._qcache: OrderedDict[str, list[float]] = OrderedDict()  # LRU of query embeddings
         self._qlock = threading.Lock()
 
     QUERY_CACHE_SIZE = 1024
+
+    def use_lexical(self) -> None:
+        from app.rag.store import BM25Index
+        self._bm25 = BM25Index(self._store.all_hits())
+        self._min_similarity = 0.0  # BM25 scores are relative; abstention comes from answered_from_context
 
     def _embed_queries(self, queries: list[str]) -> list[list[float]]:
         """Support traffic repeats the same questions (and the planner's rewrites): cached query vectors save an
@@ -81,8 +87,12 @@ class KnowledgeAgent:
         if not unique or self._store.count() == 0:
             return []
         best: dict[tuple[str, str], Hit] = {}
-        for vector in self._embed_queries(unique):
-            for h in self._store.query(vector, self._top_k * 3):
+        if self._bm25 is not None:
+            candidate_lists = [self._bm25.search(q, self._top_k * 3) for q in unique]
+        else:
+            candidate_lists = [self._store.query(v, self._top_k * 3) for v in self._embed_queries(unique)]
+        for candidates in candidate_lists:
+            for h in candidates:
                 key = (h.url, h.text[:120])
                 if key not in best or best[key].score < h.score:
                     best[key] = h

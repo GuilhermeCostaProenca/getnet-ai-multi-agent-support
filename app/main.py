@@ -16,7 +16,7 @@ from app.agents.knowledge import KnowledgeAgent
 from app.agents.planner import Planner
 from app.agents.support import SupportAgent
 from app.config import Settings, get_settings
-from app.llm import LLMClient, OpenAIClient
+from app.llm import LLMClient, make_llm
 from app.observability import Metrics, configure_logging
 from app.orchestrator import Orchestrator
 from app.rag.ingest import ingest
@@ -32,11 +32,15 @@ log = logging.getLogger(__name__)
 def build_services(settings: Settings, llm: LLMClient, kb: KnowledgeStore, store: Store,
                    metrics: Metrics) -> tuple[Orchestrator, HandoffService]:
     handoff = HandoffService(store)
+    knowledge = KnowledgeAgent(llm, kb, settings.rag_top_k, settings.rag_min_similarity)
+    if settings.llm_provider == "anthropic" and hasattr(kb, "all_hits"):
+        knowledge.use_lexical()  # no embeddings endpoint: BM25 over the stored chunks
     orchestrator = Orchestrator(
-        llm, store, Planner(llm), KnowledgeAgent(llm, kb, settings.rag_top_k, settings.rag_min_similarity),
+        llm, store, Planner(llm), knowledge,
         SupportAgent(llm), handoff, min_confidence=settings.planner_min_confidence,
         max_clarifications=settings.max_clarifications, history_window=settings.history_window,
-        moderation_enabled=settings.moderation_enabled, metrics=metrics)
+        # Anthropic has no moderation endpoint: the planner's `unsafe` intent is the screen in that mode.
+        moderation_enabled=settings.moderation_enabled and settings.llm_provider != "anthropic", metrics=metrics)
     return orchestrator, handoff
 
 
@@ -56,7 +60,7 @@ def create_app(settings: Settings | None = None, llm: LLMClient | None = None, k
         configure_logging(settings.log_level)
         if not settings.jwt_secret:
             raise RuntimeError("JWT_SECRET is not set")
-        app.state.llm = llm or OpenAIClient(settings)
+        app.state.llm = llm or make_llm(settings)
         app.state.kb = kb or ChromaStore(settings.chroma_path, settings.chroma_collection)
         app.state.store = store or Store(settings.database_path)
         if settings.auto_ingest and app.state.kb.count() == 0:

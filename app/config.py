@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     openai_api_key: str = ""
+    llm_provider: str = "openai"  # "anthropic": Claude for reasoning, OpenAI for embeddings/moderation/web
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-5-5"
     chat_model: str = "gpt-5.4-mini"
     fallback_chat_model: str = "gpt-4.1-mini"  # used once on outage-type errors; "" disables
     embedding_model: str = "text-embedding-3-small"

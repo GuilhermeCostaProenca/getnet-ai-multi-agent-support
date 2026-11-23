@@ -19,7 +19,7 @@ from app.agents.knowledge import KnowledgeAgent
 from app.agents.planner import Planner
 from app.agents.policy import guess_language, policy_text
 from app.agents.support import SupportAgent
-from app.llm import LLMClient, start_meter
+from app.llm import LLMClient, ModelRefusal, start_meter
 from app.memory import ConversationMemory
 from app.observability import Metrics
 from app.schemas import (IN_SCOPE, AgentResult, ChatRequest, ChatResponse, GuardrailReport, Handoff, Plan, Source,
@@ -169,6 +169,11 @@ class Orchestrator:
             plan: Plan | None = self._planner.plan(text, history)
             detail = (f"tasks={[t.intent for t in plan.tasks]} conf={plan.confidence:.2f} "
                       f"clarify={plan.needs_clarification} lang={plan.language}")
+        except ModelRefusal:  # the model declined on safety grounds: a policy refusal, not a planner failure
+            plan = Plan(language=guess_language(text), confidence=1.0, needs_clarification=False,
+                        clarification_question="", wants_human=False, rationale="model refusal",
+                        tasks=[Task(intent="unsafe", query=text, retrieval_query="", consult_knowledge_base=False)])
+            detail = "model_refusal -> unsafe"
         except Exception as exc:  # noqa: BLE001
             plan, detail = None, f"failed: {type(exc).__name__}"
         return plan, detail, int((time.perf_counter() - started) * 1000)

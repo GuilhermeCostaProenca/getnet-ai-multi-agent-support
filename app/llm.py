@@ -142,3 +142,80 @@ class OpenAIClient:
     def moderate(self, text: str) -> bool:
         resp = self._client.moderations.create(model=self._moderation_model, input=text)
         return bool(resp.results[0].flagged)
+
+
+class ModelRefusal(RuntimeError):
+    """The model declined the request on safety grounds (treated as the `unsafe` intent, not as a failure)."""
+
+
+class AnthropicClient(OpenAIClient):
+    """LLM_PROVIDER=anthropic: Claude does the reasoning calls (planner, agents, reviewer, tool loop) through the
+    Messages API (structured outputs validate every agent contract against its Pydantic model)."""
+
+    def __init__(self, settings: Settings):
+        super().__init__(settings)
+        import anthropic
+
+        self._anthropic = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds,
+                                              max_retries=2)
+        self._claude = settings.anthropic_model
+
+    def parse(self, instructions: str, user_input: str, schema: type[T]) -> T:
+        from anthropic import transform_schema
+
+        resp = self._anthropic.messages.create(
+            model=self._claude, max_tokens=8000, system=instructions,
+            messages=[{"role": "user", "content": user_input}],
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": transform_schema(schema)}})
+        _record(resp.usage)
+        if resp.stop_reason == "refusal":  # checked before validation: a refusal carries no schema-shaped JSON
+            raise ModelRefusal("stop_reason=refusal")
+        return schema.model_validate_json("".join(b.text for b in resp.content if b.type == "text"))
+
+    def web_search(self, instructions: str, question: str) -> tuple[str, list[Source]]:
+        resp = self._anthropic.messages.create(
+            model=self._claude, max_tokens=8000, system=instructions, output_config={"effort": "low"},
+            messages=[{"role": "user", "content": question}],
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}])
+        _record(resp.usage)
+        text, cited, consulted = [], {}, {}
+        for b in resp.content:
+            if b.type == "text":
+                text.append(b.text)
+                for c in getattr(b, "citations", None) or []:
+                    url = getattr(c, "url", None)
+                    if url:
+                        cited[url] = Source(title=getattr(c, "title", None) or url, url=url)
+            elif b.type == "web_search_tool_result":
+                for r in getattr(b, "content", None) or []:
+                    url = getattr(r, "url", None)
+                    if url:
+                        consulted[url] = Source(title=getattr(r, "title", None) or url, url=url)
+        return "".join(text).strip(), list(cited.values()) or list(consulted.values())[:5]
+
+    def run_tools(self, instructions: str, user_input: str, tools: list[dict[str, Any]],
+                  execute: ToolExecutor) -> tuple[str, list[ToolCall]]:
+        claude_tools = [{"name": t["name"], "description": t.get("description", ""), "input_schema": t["parameters"]}
+                        for t in tools]
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_input}]
+        calls: list[ToolCall] = []
+        for _ in range(self.MAX_TOOL_ROUNDS):
+            resp = self._anthropic.messages.create(model=self._claude, max_tokens=8000, system=instructions,
+                                                   messages=messages, tools=claude_tools,
+                                                   output_config={"effort": "low"})
+            _record(resp.usage)
+            uses = [b for b in resp.content if b.type == "tool_use"]
+            if not uses:
+                return "".join(b.text for b in resp.content if b.type == "text").strip(), calls
+            messages.append({"role": "assistant", "content": resp.content})
+            results = []
+            for u in uses:
+                calls.append(ToolCall(name=u.name, arguments=dict(u.input)))
+                results.append({"type": "tool_result", "tool_use_id": u.id,
+                                "content": json.dumps(execute(u.name, dict(u.input)), default=str)})
+            messages.append({"role": "user", "content": results})
+        raise RuntimeError("tool loop exceeded the maximum number of rounds")
+
+
+def make_llm(settings: Settings) -> LLMClient:
+    return AnthropicClient(settings) if settings.llm_provider == "anthropic" else OpenAIClient(settings)
