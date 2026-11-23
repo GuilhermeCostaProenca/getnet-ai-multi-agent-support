@@ -1,9 +1,18 @@
 """Knowledge agent: RAG over Getnet content, site-restricted web replan, and general web search (REQ-KNW, ORC-04)."""
 
+import re
+import unicodedata
+
 from app.agents.policy import policy_text
 from app.llm import LLMClient
 from app.rag.store import Hit, KnowledgeStore
 from app.schemas import AgentResult, KnowledgeAnswer, Source, Task
+
+def _fold(text: str) -> str:
+    """Lowercase, strip accents and punctuation ('Crediário?' → 'crediario')."""
+    no_accents = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9 ]", " ", no_accents.lower())
+
 
 RAG_INSTRUCTIONS = """\
 You are Getnet's Knowledge Agent. Answer the merchant's question using ONLY the numbered context excerpts from
@@ -11,6 +20,9 @@ Getnet's official websites.
 - Ground every statement in the context and cite excerpts as [1], [2]...
 - Do not use outside knowledge. If the context does not answer the question, say you did not find it in Getnet's
   official content.
+- Getnet has similar products with different rules (e.g. Crediário, Parcelado Emissor, Parcelado Lojista). Answer
+  about the exact product the user named, preferring excerpts from that product's own page; never transfer a limit,
+  fee or deadline from one product to another.
 - answered_from_context: false ONLY when the context gives no concrete fact answering the main question; if you give
   a partial answer with concrete facts, set true and say what is missing.
 - Be concise and practical. Answer in the user's language ({language}).
@@ -46,12 +58,21 @@ class KnowledgeAgent:
             return []
         best: dict[tuple[str, str], Hit] = {}
         for vector in self._llm.embed(unique):
-            for h in self._store.query(vector, self._top_k):
+            for h in self._store.query(vector, self._top_k * 3):
                 key = (h.url, h.text[:120])
                 if key not in best or best[key].score < h.score:
                     best[key] = h
-        ranked = sorted(best.values(), key=lambda h: h.score, reverse=True)
+        terms = {t for q in unique for t in _fold(q).split() if len(t) >= 6}
+        ranked = sorted(best.values(), key=lambda h: h.score + self._slug_boost(h.url, terms), reverse=True)
         return [h for h in ranked if h.score >= self._min_similarity][: self._top_k]
+
+    @staticmethod
+    def _slug_boost(url: str, terms: set[str]) -> float:
+        """Lexical signal on top of dense retrieval: a chunk from the page dedicated to the product the user named
+        (e.g. /crediario/) outranks FAQ passages about related products. Measured: without it the 'up to 48x' chunk
+        fell out of the top-8 behind 'Parcelado Emissor: up to 24' and the model answered 24."""
+        slug = _fold(url.rstrip("/").rsplit("/", 1)[-1].replace("-", " "))
+        return 0.08 if any(t in slug.split() for t in terms) else 0.0
 
     @staticmethod
     def format_context(hits: list[Hit]) -> str:

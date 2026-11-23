@@ -109,3 +109,17 @@ def test_ac44_json_log_line():
     record.message_redacted = "card [CARD_REDACTED]"
     line = json.loads(JsonFormatter().format(record))
     assert line["event"] == "chat_completed" and line["message_redacted"] == "card [CARD_REDACTED]"
+
+
+def test_retrieval_slug_boost_prefers_the_named_products_page():
+    """KNW-04: a chunk from the page of the product the user named outranks a higher-scoring FAQ passage about a
+    related product (regression: 'crediário' was answered with Parcelado Emissor's 24-installment limit)."""
+    from app.agents.knowledge import KnowledgeAgent
+    from app.rag.store import Hit
+    from tests.conftest import FakeLLM, MemoryKB
+
+    faq = Hit(text="Parcelado Emissor admite até 24 parcelas.", title="Dúvidas", url="https://site.getnet.com.br/duvidas/", score=0.74)
+    product = Hit(text="Crediário: parcelamento em até 48x.", title="Crediário", url="https://site.getnet.com.br/crediario/", score=0.70)
+    agent = KnowledgeAgent(FakeLLM(), MemoryKB([faq, product]), top_k=8, min_similarity=0.3)
+    assert [h.url for h in agent.retrieve("Em quantas parcelas posso dividir no Crediário?")][0].endswith("/crediario/")
+    assert [h.url for h in agent.retrieve("Quais as taxas de parcelamento?")][0].endswith("/duvidas/")

@@ -44,3 +44,4 @@ Test names carry the AC id.
 | AC-49 | Long conversation → older turns summarized and sent as `[summary of earlier turns]`; old DBs migrated | MEM-04 | U |
 | AC-50 | `/metrics` counts requests, handoffs per reason and guardrail flags; exposes latency quantiles | OBS-02 | U |
 | AC-51 | Retrieval embeds the rewrite and the original query in one call and merges results | KNW-04 | U, E |
+| AC-52 | A chunk from the named product's page outranks a higher-scoring FAQ chunk about a related product | KNW-04 | U, E |
