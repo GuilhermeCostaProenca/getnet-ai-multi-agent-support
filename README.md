@@ -197,7 +197,8 @@ mode retrieval uses **BM25** over the stored chunks (with the planner's Portugue
 planner's `unsafe` intent is the screen; a provider-level refusal becomes the `unsafe` policy, not an escalation.
 Verified live on Claude: crediário → 48x from the KB, terminal diagnosis via `diagnose_terminal`, settlements via
 `get_sales_and_settlements`, dollar rate via web search with sources, compound request answered in part, card-cloning
-request refused, prompt injection blocked. The eval numbers above were measured with OpenAI.
+request refused, prompt injection blocked; the live integration suite passes **12 / 12 on Claude** as well. Latency
+is higher with `claude-opus-5-5` (about 5–19 s per request vs p50 3.5 s); the eval numbers above were measured with OpenAI.
 
 **Timebox log (transparency).** Window opened 15:38:06; work stopped at 16:22 (44 min) when the power went out. The
 remaining ~16 min were used after power returned (from 19:55): per-tool timeout, fallback chat model, incremental
