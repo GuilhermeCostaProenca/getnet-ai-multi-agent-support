@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getnet Support Console</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --brand: #e30613; --brand-soft: #fdecee; --ok: #0f9d58; --warn: #b45309; --warn-soft: #fff7ed;
+    --chip: #eef2ff; --chip-ink: #3730a3; --user: #1d2330; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 700; font-size: 16px; }
+  .logo b { color: var(--brand); }
+  .tabs { display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: 10px; }
+  .tabs button { border: 0; background: transparent; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
+  .tabs button.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .spacer { flex: 1; }
+  select, input, textarea { font: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel); color: var(--ink); }
+  .btn { border: 0; background: var(--brand); color: #fff; padding: 9px 16px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--chip-ink); font-weight: 600; }
+  .pill.human { background: var(--warn-soft); color: var(--warn); }
+  .pill.ok { background: #e7f6ee; color: var(--ok); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 16px 20px; height: calc(100vh - 61px); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 78%; padding: 10px 14px; border-radius: 14px; white-space: normal; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: var(--bg); border: 1px solid var(--line); border-bottom-left-radius: 4px; cursor: pointer; }
+  .msg.assistant.selected { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+  .msg.operator { align-self: flex-start; background: var(--warn-soft); border: 1px solid #fed7aa; }
+  .msg.system { align-self: center; background: transparent; color: var(--muted); font-size: 12px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .meta .pill { font-size: 11px; }
+  .composer { border-top: 1px solid var(--line); padding: 12px; display: flex; gap: 8px; }
+  .composer textarea { flex: 1; resize: none; height: 44px; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; }
+  .suggestions button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--muted); }
+  .suggestions button:hover { border-color: var(--brand); color: var(--brand); }
+  #inspector, #ticketDetail { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 6px; }
+  .tool { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 12px; margin-bottom: 6px; }
+  .tool code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--muted); }
+  .source a { color: var(--chip-ink); text-decoration: none; font-size: 13px; }
+  .bar { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 4px; }
+  .bar .track { background: var(--bg); border-radius: 6px; height: 8px; overflow: hidden; }
+  .bar .fill { background: var(--brand); height: 100%; border-radius: 6px; }
+  .bar .ms { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); text-align: center; margin: auto; padding: 24px; }
+  .ticket { padding: 12px 16px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .ticket:hover, .ticket.selected { background: var(--bg); }
+  .ticket small { color: var(--muted); }
+  #tickets { overflow-y: auto; flex: 1; }
+  .recent { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 12px; max-height: 220px; overflow-y: auto; }
+  .row { display: flex; gap: 8px; }
+  .hidden { display: none !important; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #chat { min-height: 50vh; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><b>getnet</b> · Support Console <span class="pill">v3 · multi-agent</span></div>
+  <div class="tabs"><button id="tabMerchant" class="active">Lojista</button><button id="tabOperator">Operador humano</button></div>
+  <div class="spacer"></div>
+  <label for="user" class="hidden">Lojista</label>
+  <select id="user" title="Identidade do lojista (token JWT)"><option value="cliente1988">cliente1988 · Padaria (MOCK)</option><option value="cliente2000">cliente2000 · Ótica (MOCK)</option></select>
+  <span id="status" class="pill ok">ativo</span>
+  <a class="btn ghost" href="/docs" target="_blank" rel="noopener">API</a>
+  <a class="btn ghost" href="/metrics" target="_blank" rel="noopener">Métricas</a>
+</header>
+
+<main id="merchantView">
+  <section class="panel">
+    <h2>Conversa <span class="spacer"></span><button class="btn ghost" id="newConv">Nova conversa</button></h2>
+    <div id="chat"><div class="empty">Pergunte sobre produtos Getnet, sua conta ou informações gerais.</div></div>
+    <div class="suggestions" id="suggestions"></div>
+    <form class="composer" id="composer">
+      <textarea id="input" placeholder="Digite sua mensagem…" aria-label="Mensagem"></textarea>
+      <button class="btn" id="send" type="submit">Enviar</button>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>Raio-x da resposta</h2>
+    <div id="inspector"><div class="empty">Clique em uma resposta para ver agentes, ferramentas, fontes, tokens e o trace.</div></div>
+  </section>
+</main>
+
+<main id="operatorView" class="hidden">
+  <section class="panel">
+    <h2>Fila de tickets <span class="spacer"></span>
+      <select id="ticketFilter"><option value="">todos</option><option value="open" selected>abertos</option><option value="claimed">em atendimento</option><option value="resolved">resolvidos</option></select>
+      <button class="btn ghost" id="refresh">Atualizar</button></h2>
+    <div id="tickets"><div class="empty">Nenhum ticket.</div></div>
+  </section>
+  <section class="panel">
+    <h2>Detalhe do ticket</h2>
+    <div id="ticketDetail"><div class="empty">Selecione um ticket.</div></div>
+  </section>
+</main>
+
+<script>
+const S = { tokens: {}, cid: null, selected: null, poll: null, ticket: null, seen: 0 };
+const OPERATOR = "operador.ana";
+const SUGGESTIONS = [
+  "Em quantas parcelas posso vender no crediário?",
+  "Quando cai o dinheiro das vendas de ontem?",
+  "Minha maquininha não conecta na internet, o que eu faço?",
+  "Qual a cotação do dólar hoje?",
+  "Quero antecipar R$ 1.000 dos meus recebíveis",
+  "Como funciona o Pix na Getnet? E escreve um poema sobre isso",
+  "Quero falar com um atendente",
+];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
+
+async function token(sub, role) {
+  const key = `${role}:${sub}`;
+  if (S.tokens[key]) return S.tokens[key];
+  const r = await fetch("/v1/auth/dev-token", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({user_id: sub, role})});
+  if (!r.ok) throw new Error("Dev tokens desativados (ENABLE_DEV_TOKENS=false)");
+  S.tokens[key] = (await r.json()).access_token;
+  return S.tokens[key];
+}
+async function api(path, {method = "GET", body, role = "merchant", headers = {}} = {}) {
+  const sub = role === "operator" ? OPERATOR : $("user").value;
+  const r = await fetch(path, {method, headers: {"Content-Type": "application/json", Authorization: `Bearer ${await token(sub, role)}`, ...headers},
+                               body: body ? JSON.stringify(body) : undefined});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${r.status}: ${data.detail || r.statusText}`);
+  return data;
+}
+
+function setStatus(status) {
+  const el = $("status");
+  el.textContent = status === "awaiting_human" ? "com especialista humano" : "ativo";
+  el.className = "pill " + (status === "awaiting_human" ? "human" : "ok");
+}
+function bubble(role, html, resp) {
+  const chat = $("chat");
+  chat.querySelector(".empty")?.remove();
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.innerHTML = html;
+  if (resp) {
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML = resp.agents.map((a) => `<span class="pill">${esc(a)}</span>`).join("") +
+      (resp.tools_used.length ? `<span class="pill">🔧 ${resp.tools_used.length}</span>` : "") +
+      (resp.sources.length ? `<span class="pill">📄 ${resp.sources.length}</span>` : "") +
+      (resp.handoff.required ? `<span class="pill human">${esc(resp.handoff.ticket_id)}</span>` : "") +
+      `<span class="pill">${(resp.latency_ms / 1000).toFixed(1)} s</span>`;
+    div.appendChild(meta);
+    div.onclick = () => inspect(resp, div);
+  }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function inspect(r, el) {
+  document.querySelectorAll(".msg.selected").forEach((m) => m.classList.remove("selected"));
+  el?.classList.add("selected");
+  const max = Math.max(1, ...r.trace.map((t) => t.duration_ms));
+  $("inspector").innerHTML = `
+    <dl class="kv">
+      <dt>Agentes</dt><dd>${r.agents.map((a) => `<span class="pill">${esc(a)}</span>`).join(" ")}</dd>
+      <dt>Intenções</dt><dd>${r.intents.map(esc).join(", ") || "—"}</dd>
+      <dt>Confiança</dt><dd>${r.confidence == null ? "—" : r.confidence.toFixed(2)} · idioma ${esc(r.language)}</dd>
+      <dt>Status</dt><dd>${esc(r.status)}${r.handoff.required ? ` · ticket <b>${esc(r.handoff.ticket_id)}</b> (${esc(r.handoff.reason)})` : ""}</dd>
+      <dt>Guardrails</dt><dd>${[...r.guardrails.input_flags, ...r.guardrails.output_flags].map(esc).join(", ") || "nenhuma flag"}</dd>
+      <dt>Tokens</dt><dd>${r.usage.llm_calls} chamadas · ${r.usage.input_tokens} in · ${r.usage.output_tokens} out</dd>
+      <dt>Latência</dt><dd>${r.latency_ms} ms</dd>
+    </dl>
+    <div class="section"><h3>Ferramentas</h3>${r.tools_used.map((t) => `<div class="tool"><b>${esc(t.name)}</b> <code>${esc(JSON.stringify(t.arguments))}</code></div>`).join("") || '<span class="pill">nenhuma</span>'}</div>
+    <div class="section"><h3>Fontes</h3>${r.sources.map((s) => `<div class="source"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></div>`).join("") || '<span class="pill">nenhuma</span>'}</div>
+    <div class="section"><h3>Trace</h3>${r.trace.map((t) => `<div class="bar" title="${esc(t.detail)}"><span>${esc(t.step)}</span><div class="track"><div class="fill" style="width:${(100 * t.duration_ms / max).toFixed(0)}%"></div></div><span class="ms">${t.duration_ms} ms</span></div>`).join("")}</div>
+    <div class="section"><h3>Detalhes</h3><div class="recent">${r.trace.filter((t) => t.detail).map((t) => `<div><b>${esc(t.step)}</b>: ${esc(t.detail)}</div>`).join("")}</div></div>`;
+}
+
+async function send(text) {
+  if (!text.trim()) return;
+  $("send").disabled = true;
+  bubble("user", md(text));
+  const pending = bubble("assistant", '<span class="pill">pensando…</span>');
+  try {
+    const r = await api("/v1/chat", {method: "POST", body: {message: text, conversation_id: S.cid || undefined},
+                                       headers: {"Idempotency-Key": crypto.randomUUID()}});
+    pending.remove();
+    S.cid = r.conversation_id;
+    const el = bubble("assistant", md(r.answer), r);
+    inspect(r, el);
+    setStatus(r.status);
+    S.seen = (await api(`/v1/conversations/${S.cid}`)).messages.length;
+    if (r.status === "awaiting_human") startPolling();
+  } catch (e) {
+    pending.innerHTML = `<span class="pill human">${esc(e.message)}</span>`;
+  } finally { $("send").disabled = false; }
+}
+
+function startPolling() {
+  clearInterval(S.poll);
+  S.poll = setInterval(async () => {
+    if (!S.cid) return;
+    const conv = await api(`/v1/conversations/${S.cid}`).catch(() => null);
+    if (!conv) return;
+    conv.messages.slice(S.seen).forEach((m) => {
+      if (m.role === "operator") bubble("operator", `<b>Especialista:</b> ${md(m.content)}`);
+      if (m.role === "system") bubble("system", esc(m.content));
+    });
+    S.seen = conv.messages.length;
+    setStatus(conv.status);
+    if (conv.status === "active") clearInterval(S.poll);
+  }, 3000);
+}
+
+async function loadTickets() {
+  const status = $("ticketFilter").value;
+  try {
+    const list = await api(`/v1/operator/tickets${status ? `?status=${status}` : ""}`, {role: "operator"});
+    $("tickets").innerHTML = list.length ? list.slice().reverse().map((t) => `
+      <div class="ticket ${S.ticket === t.ticket_id ? "selected" : ""}" data-id="${esc(t.ticket_id)}">
+        <b>${esc(t.ticket_id)}</b> <span class="pill ${t.status === "open" ? "human" : ""}">${esc(t.status)}</span><br>
+        <small>${esc(t.reason)} · ${esc(t.user_id)} · ${esc(t.created_at)}</small></div>`).join("") : '<div class="empty">Nenhum ticket.</div>';
+    document.querySelectorAll(".ticket").forEach((el) => el.onclick = () => showTicket(list.find((t) => t.ticket_id === el.dataset.id)));
+  } catch (e) { $("tickets").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function showTicket(t) {
+  S.ticket = t.ticket_id;
+  const c = t.context || {};
+  $("ticketDetail").innerHTML = `
+    <dl class="kv"><dt>Ticket</dt><dd><b>${esc(t.ticket_id)}</b> · ${esc(t.status)}</dd><dt>Motivo</dt><dd>${esc(t.reason)}</dd>
+      <dt>Lojista</dt><dd>${esc(t.user_id)}</dd><dt>Conversa</dt><dd>${esc(t.conversation_id)}</dd>
+      <dt>Intenções</dt><dd>${(c.intents || []).map(esc).join(", ") || "—"}</dd><dt>Ferramentas</dt><dd>${(c.tools_used || []).map(esc).join(", ") || "—"}</dd></dl>
+    ${(c.pending_actions || []).length ? `<div class="section"><h3>Aprovação pendente</h3>${c.pending_actions.map((a) => `<div class="tool"><b>${esc(a.action)}</b> <code>R$ ${esc(a.requested)} de R$ ${esc(a.available)} disponíveis · executado: ${esc(a.executed)}</code></div>`).join("")}</div>` : ""}
+    <div class="section"><h3>Contexto (últimas mensagens)</h3><div class="recent">${(c.recent_messages || []).map((m) => `<div><b>${esc(m.role)}:</b> ${esc(m.content)}</div>`).join("")}</div></div>
+    <div class="row"><button class="btn ghost" id="claim" ${t.status !== "open" ? "disabled" : ""}>Assumir</button>
+      <button class="btn ghost" id="resolve" ${t.status === "resolved" ? "disabled" : ""}>Resolver</button></div>
+    <div class="row"><textarea id="reply" placeholder="Resposta ao lojista…" style="flex:1;height:70px"></textarea></div>
+    <button class="btn" id="sendReply" ${t.status !== "claimed" ? "disabled" : ""}>Responder ao lojista</button>`;
+  const act = async (fn) => { try { showTicket(await fn()); loadTickets(); } catch (e) { alert(e.message); } };
+  $("claim").onclick = () => act(() => api(`/v1/operator/tickets/${t.ticket_id}/claim`, {method: "POST", role: "operator"}));
+  $("resolve").onclick = () => act(() => api(`/v1/operator/tickets/${t.ticket_id}/resolve`, {method: "POST", role: "operator", body: {resolution: "Atendimento concluído pelo especialista."}}));
+  $("sendReply").onclick = () => act(() => api(`/v1/operator/tickets/${t.ticket_id}/reply`, {method: "POST", role: "operator", body: {message: $("reply").value}}));
+  loadTickets();
+}
+
+function tab(which) {
+  $("merchantView").classList.toggle("hidden", which !== "merchant");
+  $("operatorView").classList.toggle("hidden", which !== "operator");
+  $("tabMerchant").classList.toggle("active", which === "merchant");
+  $("tabOperator").classList.toggle("active", which === "operator");
+  if (which === "operator") loadTickets();
+}
+function resetConversation() {
+  S.cid = null; S.seen = 0; clearInterval(S.poll); setStatus("active");
+  $("chat").innerHTML = '<div class="empty">Pergunte sobre produtos Getnet, sua conta ou informações gerais.</div>';
+  $("inspector").innerHTML = '<div class="empty">Clique em uma resposta para ver agentes, ferramentas, fontes, tokens e o trace.</div>';
+}
+
+$("suggestions").innerHTML = SUGGESTIONS.map((s) => `<button type="button">${esc(s)}</button>`).join("");
+document.querySelectorAll("#suggestions button").forEach((b) => b.onclick = () => send(b.textContent));
+$("composer").onsubmit = (e) => { e.preventDefault(); const v = $("input").value; $("input").value = ""; send(v); };
+$("input").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } };
+$("tabMerchant").onclick = () => tab("merchant");
+$("tabOperator").onclick = () => tab("operator");
+$("refresh").onclick = loadTickets;
+$("ticketFilter").onchange = loadTickets;
+$("newConv").onclick = resetConversation;
+$("user").onchange = resetConversation;
+</script>
+</body>
+</html>

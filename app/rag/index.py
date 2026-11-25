@@ -33,7 +33,7 @@ class Hit:
 
 class KnowledgeIndex:
     K1, B = 1.5, 0.75
-    SLUG_BOOST = 0.15
+    SLUG_BOOST = 0.5
     CACHE_SIZE = 512
 
     def __init__(self, store: Store):

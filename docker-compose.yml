@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/getnet.db
+      ENABLE_DEV_TOKENS: "true"   # demo console; disable in production
+    volumes:
+      - app-data:/app/data
+
+volumes:
+  app-data:
