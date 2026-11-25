@@ -8,7 +8,7 @@ services:
       DATABASE_PATH: /app/data/getnet.db
       ENABLE_DEV_TOKENS: "true"   # demo console; disable in production
     volumes:
-      - app-data:/app/data
+      - getnet-v3-data:/app/data
 
 volumes:
-  app-data:
+  getnet-v3-data:
