@@ -20,7 +20,29 @@ in a 60-minute window, driven by the v1 evaluation (7.3/10), using **Claude** as
 | **Production (7.5)** | Versioned API (`/v1`), idempotency keys, lean non-root image with healthcheck, CI | AC-42 |
 | **Demo** | **Web console at `/`**: chat, per-answer "x-ray" (agents, intents, tools, sources, flags, tokens, latency, trace) and the operator view | AC-50 |
 
-<!-- RESULTS -->
+## Measured results (final code, 2026-11-25)
+
+| Check | Result |
+|---|---|
+| Deterministic suite (`pytest`, fake LLM, CI on every push) | **38 passed** |
+| Live acceptance (`pytest -m integration`, real Claude: challenge scenarios, crediário 48x, refusals, follow-up, compound, approval gate) | **12 / 12** |
+| Eval — 25 labelled cases (EN, PT, adversarial, compound) × 2 runs = 50 real requests ([eval/report.md](eval/report.md)) | routing **1.0** (EN 1.0 / PT 1.0) · tool accuracy **1.0** · refusal precision/recall **1.0 / 1.0** · pass^2 **1.0** · 0 unexpected handoffs · gate passed |
+| LLM judge (same 50 answers) | answers the question **1.0** · right language **1.0** · KB answers grounded in the excerpts used **0.95** · score **4.84 / 5** · judge agreement on the calibration set **1.0** |
+| Retrieval (BM25 on the raw message, before rewrite/re-rank) | Recall@1 0.556 · Recall@3 0.889 · Recall@5 **1.0** · MRR 0.713 |
+| Cost / latency (`claude-opus-5-5`, effort low) | ~10.4k tokens per request · p50 7.6 s · p95 13.5 s |
+| Container (`docker compose up --build`) | image **299 MB**; startup ingestion 19 pages / 117 chunks; console 200; chat without token 401; receivables advance → ticket `approval_required` → paused turn with **0 LLM calls** → operator claim/reply/resolve; `/metrics` counts handoffs by reason |
+| Console (browser) | chat answer with sources and x-ray panel (agents, intents, tokens, trace); operator view shows the pending approval (`executed: false`) |
+
+**How the eval was made trustworthy.** The first judge runs graded grounding against the wrong context: a fresh
+search of the raw message (grounded 0.18), then whole cited pages truncated at 16k characters (0.38). The knowledge
+agent now records the exact excerpts it grounded on (per request, like the token meter) and the judge grades against
+those: 0.95. The judge itself is checked on answers with a known verdict (correct, wrong limit, wrong language,
+invented fee, non-answer, correct refusal) and agreed on all of them.
+
+**Trade-offs visible in the numbers.** BM25 alone puts the gold page first only about half the time; query rewriting,
+the product-page boost and Claude re-ranking close the gap (answers are grounded 0.95). Latency and tokens are the
+price of Opus with re-ranking and a reviewer; `LLM_MODEL`, `RERANK_ENABLED` and the reviewer are the levers.
+
 
 ## Quick start
 
