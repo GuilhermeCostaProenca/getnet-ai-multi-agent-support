@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 
 from app.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.llm import current_evidence  # noqa: E402
 from app.schemas import ChatRequest  # noqa: E402
 
 GATE = {"routing_accuracy": 0.9, "tool_accuracy": 0.9, "refusal_precision": 0.9, "refusal_recall": 0.9, "recall@5": 0.8}
@@ -101,9 +102,11 @@ def main() -> None:
                    "latency_ms": r.latency_ms, "tokens": r.usage.input_tokens + r.usage.output_tokens}
             row["correct"] = row["intents_ok"] and row["tools_ok"] and row["handoff_ok"]
             if not args.no_judge:
-                is_kb = "product_knowledge" in r.intents and r.sources and "knowledge" in r.agents
-                excerpts = "\n".join(f"[{i}] {h.text[:600]}" for i, h in
-                                     enumerate(index.search([case["message"]], 6), 1)) if is_kb else ""
+                # The judge sees exactly the excerpts the agent grounded on (after rewrite + re-rank), recorded per
+                # request; answers from the web replan carry no KB evidence and are judged as web answers.
+                used = current_evidence()
+                is_kb = "product_knowledge" in r.intents and bool(used)
+                excerpts = "\n\n".join(f"[{i}] {t}" for i, t in enumerate(used, 1)) if is_kb else ""
                 v = judge(llm, case["message"], r.answer, excerpts)
                 row.update(judge_answers=v.answers_question, judge_language=v.language_ok,
                            judge_grounded=v.grounded if is_kb else None, judge_score=max(1, min(5, v.score)),

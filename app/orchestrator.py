@@ -16,7 +16,7 @@ from app.agents.escalation import HandoffService
 from app.agents.knowledge import KnowledgeAgent
 from app.agents.planner import Planner
 from app.agents.support import SupportAgent
-from app.llm import ModelRefusal, start_meter
+from app.llm import ModelRefusal, start_evidence, start_meter
 from app.memory import ConversationMemory
 from app.observability import Metrics
 from app.schemas import (IN_SCOPE, ChatRequest, ChatResponse, GuardrailReport, Handoff, Plan, Source, Task, ToolCall,
@@ -78,6 +78,7 @@ class Orchestrator:
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
         meter = start_meter()
+        start_evidence()
         trace = Trace()
         with span("chat.request", user_id=user_id):
             conv = self._store.open_conversation(req.conversation_id, user_id)  # NotFound → 404 (MEM-01)

@@ -43,6 +43,26 @@ def start_meter() -> UsageMeter:
     return meter
 
 
+_evidence: ContextVar[list[str] | None] = ContextVar("evidence", default=None)
+
+
+def start_evidence() -> list[str]:
+    """Per-request record of the excerpts the agents grounded on (used by the eval judge)."""
+    evidence: list[str] = []
+    _evidence.set(evidence)
+    return evidence
+
+
+def record_evidence(texts: list[str]) -> None:
+    evidence = _evidence.get()
+    if evidence is not None:
+        evidence.extend(texts)
+
+
+def current_evidence() -> list[str]:
+    return list(_evidence.get() or [])
+
+
 def record_usage(usage: Any) -> None:
     meter = _meter.get()
     if meter is not None and usage is not None:

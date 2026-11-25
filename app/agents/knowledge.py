@@ -2,7 +2,7 @@
 on a miss, one replan to a Getnet-restricted web search; otherwise hand off. General questions use web search."""
 
 from app.agents.base import AgentResult, policy
-from app.llm import LLM
+from app.llm import LLM, record_evidence
 from app.rag.index import Hit, KnowledgeIndex
 from app.schemas import KnowledgeAnswer, Rerank, Source, Task
 
@@ -71,6 +71,7 @@ class KnowledgeAgent:
                           f"<excerpts>\n{context}\n</excerpts>\n\n<question>\n{task.query}\n</question>")
             out = self._llm.structured(RAG_INSTRUCTIONS.format(language=language), user_input, KnowledgeAnswer)
             if out.answered_from_context:
+                record_evidence([h.text for h in hits])
                 return AgentResult("knowledge", task.intent, out.answer, sources=self._sources(hits),
                                    detail=f"{mode} hits={len(hits)}")
         answer, sources = self._llm.web_search(GETNET_WEB_INSTRUCTIONS.format(language=language),
