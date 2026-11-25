@@ -1,94 +1,105 @@
-"""Test doubles: a scriptable fake LLM and an in-memory vector store (NFR-TEST-01)."""
+"""Deterministic test harness (EVAL-01): a fake LLM that implements the LLM protocol, an in-memory store seeded
+with knowledge chunks, and an app wired exactly like production."""
 
-import math
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.main import build_orchestrator, create_app
-from app.rag.store import Hit
-from app.schemas import KnowledgeAnswer, RouteDecision, Source, ToolCall
+from app.llm import record_usage
+from app.main import create_app
+from app.schemas import KnowledgeAnswer, Plan, Rerank, Review, Revision, Source, Summary, Task, ToolCall
+from app.security import issue_token
+from app.storage import Store
+
+SECRET = "test-secret-" + "x" * 40
 
 
-def decision(intent="product_knowledge", confidence=0.95, consult_kb=False, language="en") -> RouteDecision:
-    return RouteDecision(intent=intent, confidence=confidence, language=language, consult_knowledge_base=consult_kb,
-                         retrieval_query="consulta", rationale="test")
+class _Usage:
+    input_tokens = 100
+    output_tokens = 20
+
+
+def task(intent: str, query: str = "q", retrieval_query: str = "") -> Task:
+    return Task(intent=intent, query=query, retrieval_query=retrieval_query)
+
+
+def plan(*tasks: Task, confidence: float = 0.95, clarify: bool = False, human: bool = False, language: str = "pt") -> Plan:
+    return Plan(language=language, confidence=confidence, needs_clarification=clarify,
+                clarification_question="Pode detalhar?" if clarify else "", wants_human=human, tasks=list(tasks),
+                rationale="test")
 
 
 class FakeLLM:
-    """Records every call; behaviour is scripted per test."""
-
-    def __init__(self):
-        self.route = decision()
-        self.kb_answer = KnowledgeAnswer(answer="grounded answer [1]", answered_from_context=True)
-        self.tool_plan: list[tuple[str, dict[str, Any]]] = []
-        self.flagged = False
-        self.fail_on: set[str] = set()
+    def __init__(self) -> None:
         self.calls: list[tuple[str, Any]] = []
-        self.tool_results: list[dict[str, Any]] = []
+        self.plans: list[Plan] = []
+        self.default_plan = plan(task("product_knowledge", "Como funciona o crediário?", "crediario parcelas"))
+        self.kb_answer = KnowledgeAnswer(answer="No Crediário você parcela em até 48x [1].", answered_from_context=True)
+        self.rerank: list[int] | None = None
+        self.review = Review(consistent=True, issues="")
+        self.tool_plan: list[tuple[str, dict]] = []
+        self.web = ("Resposta da web.", [Source(title="Getnet", url="https://site.getnet.com.br/pix/")])
+        self.fail_on: dict[str, Exception] = {}
 
-    def _record(self, name, payload):
-        self.calls.append((name, payload))
-        if name in self.fail_on:
-            raise RuntimeError(f"{name} failed")
+    def _call(self, op: str, payload: Any) -> None:
+        self.calls.append((op, payload))
+        record_usage(_Usage())
+        if op in self.fail_on:
+            raise self.fail_on[op]
 
-    def called(self, name) -> list[Any]:
-        return [p for n, p in self.calls if n == name]
+    def called(self, op: str) -> list[Any]:
+        return [p for o, p in self.calls if o == op]
 
-    def parse(self, instructions, user_input, schema):
+    def structured(self, instructions: str, user_input: str, schema):
+        op = {Plan: "plan", KnowledgeAnswer: "kb", Rerank: "rerank", Review: "review", Revision: "revise",
+              Summary: "summary"}[schema]
+        self._call(op, user_input)
+        if schema is Plan:
+            return self.plans.pop(0) if self.plans else self.default_plan
         if schema is KnowledgeAnswer:
-            self._record("parse_kb", user_input)
             return self.kb_answer
-        self._record("parse", user_input)
-        return self.route
+        if schema is Rerank:
+            return Rerank(order=self.rerank or [1])
+        if schema is Review:
+            return self.review
+        if schema is Revision:
+            return Revision(answer="Resposta revisada (dados MOCK).")
+        return Summary(summary="Resumo: lojista perguntou sobre crediário.")
 
-    def web_search(self, instructions, question):
-        self._record("web_search", question)
-        return "web answer", [Source(title="example", url="https://example.com")]
-
-    def run_tools(self, instructions, user_input, tools, execute):
-        self._record("run_tools", user_input)
+    def tool_loop(self, instructions: str, user_input: str, tools, execute):
+        self._call("tools", user_input)
         calls = []
         for name, args in self.tool_plan:
-            self.tool_results.append(execute(name, args))
+            execute(name, args)
             calls.append(ToolCall(name=name, arguments=args))
-        return "support answer", calls
+        return "Resposta do suporte com dados simulados (MOCK).", calls
 
-    def embed(self, texts):
-        self._record("embed", texts)
-        return [[float(len(t) % 7 + 1), 1.0] for t in texts]
-
-    def moderate(self, text):
-        self._record("moderate", text)
-        return self.flagged
+    def web_search(self, instructions: str, question: str):
+        self._call("web", question)
+        return self.web
 
 
-class MemoryStore:
-    def __init__(self, hits: list[Hit] | None = None):
-        self.hits = hits if hits is not None else [Hit("Pix text", "Pix - Getnet", "https://site.getnet.com.br/pix/", 0.8)]
-        self.added: list[tuple] = []
-
-    def count(self):
-        return len(self.hits) + len(self.added)
-
-    def add(self, ids, texts, embeddings, metadatas):
-        self.added.extend(zip(ids, texts, embeddings, metadatas))
-
-    def query(self, embedding, k):
-        assert not math.isnan(embedding[0])
-        return self.hits[:k]
-
-    def reset(self):
-        self.added.clear()
+CHUNKS = [
+    ("c1", "https://site.getnet.com.br/crediario/", "Crediário", 0,
+     "Crediário\nUma opção de pagamento com parcelamento em até 48x para seus clientes no crediário."),
+    ("c2", "https://site.getnet.com.br/duvidas/", "Dúvidas", 0,
+     "Dúvidas\nQuais modalidades de crédito parcelado existem? Parcelado Emissor admite até 24 parcelas do crediário emissor."),
+    ("c3", "https://site.getnet.com.br/pix/", "Pix", 0, "Pix\nReceba vendas com Pix na maquininha pelo QR Code."),
+]
 
 
-@pytest.fixture
-def settings() -> Settings:
-    # _env_file=None: tests must not depend on the developer's local .env
-    return Settings(_env_file=None, openai_api_key="test", auto_ingest=False, moderation_enabled=True,
-                    router_min_confidence=0.55, rag_min_similarity=0.3)
+def make_settings(**overrides: Any) -> Settings:
+    base = dict(_env_file=None, anthropic_api_key="test", jwt_secret=SECRET, auto_ingest=False, enable_dev_tokens=True,
+                rate_limit_per_minute=1000, rerank_enabled=True, rag_top_k=2)
+    return Settings(**{**base, **overrides})
+
+
+def seeded_store(path: str = ":memory:") -> Store:
+    store = Store(path)
+    store.add_chunks(CHUNKS)
+    return store
 
 
 @pytest.fixture
@@ -97,16 +108,30 @@ def llm() -> FakeLLM:
 
 
 @pytest.fixture
-def store() -> MemoryStore:
-    return MemoryStore()
+def store() -> Store:
+    return seeded_store()
 
 
 @pytest.fixture
-def orchestrator(settings, llm, store):
-    return build_orchestrator(settings, llm, store)
-
-
-@pytest.fixture
-def client(settings, llm, store):
-    with TestClient(create_app(llm=llm, store=store, settings=settings)) as c:
+def client(llm, store):
+    with TestClient(create_app(make_settings(), llm=llm, store=store)) as c:
         yield c
+
+
+@pytest.fixture
+def auth():
+    settings = make_settings()
+
+    def headers(sub: str = "cliente1988", role: str = "merchant") -> dict[str, str]:
+        return {"Authorization": f"Bearer {issue_token(settings, sub, role)}"}
+
+    return headers
+
+
+@pytest.fixture
+def chat(client, auth):
+    def send(message: str, cid: str | None = None, sub: str = "cliente1988"):
+        body = {"message": message, **({"conversation_id": cid} if cid else {})}
+        return client.post("/v1/chat", json=body, headers=auth(sub))
+
+    return send

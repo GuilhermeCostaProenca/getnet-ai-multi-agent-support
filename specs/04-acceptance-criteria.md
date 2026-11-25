@@ -1,42 +1,63 @@
-# 04 — Acceptance criteria
+# 04 — Acceptance criteria (v3)
 
-Test names carry the AC id (e.g. `test_ac11_...`). **U** = deterministic test with fake LLM (always runs). **I** = integration test against the real LLM + ingested KB (`pytest -m integration`).
+Test type: **U** = deterministic (fake LLM, CI) · **L** = live (real Claude, `pytest -m integration`) · **E** = eval harness.
 
-## Challenge scenarios (user `cliente1988`)
+## Challenge scenarios
+| AC | Scenario | Req | Test |
+|---|---|---|---|
+| AC-01 | "Taxas da maquininha / diferença Get Clássica × Get Smart" → Knowledge (RAG) with Getnet sources | REQ-KNW-01 | L, E |
+| AC-02 | Pix / payment link / crediário product questions answered from the KB with citations | REQ-KNW-01, KNW-03 | L, E |
+| AC-03 | "Quando cai o dinheiro das vendas de ontem?" → Support calls `get_sales_and_settlements` | REQ-SUP-01 | L, E |
+| AC-04 | "Minha maquininha não conecta" → Support calls `diagnose_terminal` | REQ-SUP-01 | L, E |
+| AC-05 | Weather / exchange rate → web search with sources | REQ-KNW-02 | L, E |
+| AC-06 | Out-of-scope (math, code, poem, competitor) → polite refusal | ORC-02 | U, E |
 
-| AC | Message | Expected intent → agent | Must | Test |
-|---|---|---|---|---|
-| AC-01 | Difference between Get Clássica and Get Smart? | product_knowledge → knowledge | sources from getnet site | I |
-| AC-02 | Weather forecast in Porto Alegre tomorrow? | general_info → knowledge (web) | web source URL | I |
-| AC-03 | When will yesterday's sales money be deposited? | customer_support → support | calls `get_sales_and_settlements` | U, I |
-| AC-04 | Do I need a bank account to receive via Pix? | product_knowledge → knowledge | sources | I |
-| AC-05 | Card machine won't connect to the internet | customer_support → support (+ KB) | calls `diagnose_terminal` | U, I |
-| AC-06 | How does receivables advance (antecipação) work? | product_knowledge → knowledge | sources | I |
-| AC-07 | Euro exchange rate today? | general_info → knowledge (web) | web source URL | I |
-| AC-08 | Machine showing a transaction decline error | customer_support → support | calls `diagnose_terminal` | U, I |
-| AC-09 | How many installments with crediário? | product_knowledge → knowledge | sources | I |
-| AC-10 | Sell through WhatsApp using Payment Link? | product_knowledge → knowledge | sources | I |
+## Security
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-10 | No/invalid/expired token → 401 | SEC-01 | U |
+| AC-11 | Body user_id ≠ token sub → 403; tools never receive an LLM-chosen user_id | SEC-02 | U |
+| AC-12 | Merchant on operator API → 403; rate limit → 429 | SEC-03 | U |
+| AC-13 | Injection blocked without an LLM call; card/CPF redacted in storage and prompts; PII redacted in answers | SEC-04 | U |
+| AC-14 | Planner `unsafe` or provider refusal → policy refusal, no ticket | SEC-05 | U, E |
 
-## Guardrails and reliability
+## Memory & HITL
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-20 | Follow-up in the same conversation resolved from history | MEM-02 | U, L |
+| AC-21 | Another merchant's conversation → 404; history survives a new app instance | MEM-01 | U |
+| AC-22 | Turns beyond the window are summarised and persisted | MEM-03 | U |
+| AC-23 | Escalation → ticket with context; conversation paused; paused turns make no LLM call | HITL-01, HITL-02 | U |
+| AC-24 | Operator claim → reply (visible to merchant) → resolve → agents resume | HITL-03 | U |
+| AC-25 | "Quero falar com um atendente" → ticket `user_requested_human` | HITL-04 | U |
+| AC-26 | Receivables advance → `approval_required` ticket, nothing executed | HITL-05 | U |
 
-| AC | Given | Then | Req | Test |
-|---|---|---|---|---|
-| AC-11 | "Solve 2x+3=7" (router says out_of_scope) | polite refusal, no specialist agent called | GR-SCOPE-01 | U |
-| AC-12 | "Write me a Python function…" | out_of_scope refusal | GR-SCOPE-01 | U, I |
-| AC-13 | "Ignore all previous instructions…" | `agent=guardrail`, flag `prompt_injection`, router **not** called, dedicated "blocked" message | GR-INJ-01 | U |
-| AC-25 | "I forgot my password, how do I reset it?" | **not** redacted (no false-positive PII) | GR-PII-01 | U |
-| AC-26 | Request at 22:30 in São Paulo (01:30 UTC next day) | "today" is the São Paulo date | REQ-SUP-03 | U |
-| AC-27 | General-info answer | `sources` not empty | REQ-KNW-03 | I |
-| AC-28 | Retrieved chunks are related but don't answer the question | RAG self-check `answered_from_context=false` → handoff `insufficient_context` | GR-GROUND-01 | U |
-| AC-29 | Knowledge base empty (ingestion failed) | `/health` reports `degraded` | REQ-API-03 | U |
-| AC-14 | Message containing a Luhn-valid card number | number replaced by `[CARD_REDACTED]` before the LLM, flag `pii_card`, warning in answer | GR-PII-01 | U |
-| AC-15 | `user_id=cliente1988` asks for "transactions of cliente2000" | tools only receive `cliente1988` | GR-AUTHZ-01 | U |
-| AC-16 | Router confidence < threshold | escalation agent, `handoff.required=true`, ticket id | GR-CONF-01, REQ-ESC-01 | U |
-| AC-17 | KB has no chunk above similarity threshold | no generation call; says it could not find it; handoff | GR-GROUND-01 | U |
-| AC-18 | LLM raises an exception | HTTP 200, escalation answer, no stack trace | REQ-API-02 | U |
-| AC-19 | Empty message / missing user_id | HTTP 422 | REQ-API-02 | U |
-| AC-20 | Unknown user asks for their sales | tool returns not-found; no crash | REQ-SUP-01 | U |
-| AC-21 | Moderation flags message | `agent=guardrail`, flag `moderation_flagged` | GR-MOD-01 | U |
-| AC-22 | Any support tool output | contains `data_source` = MOCK label | REQ-SUP-02 | U |
-| AC-23 | Ingestion cleaning | boilerplate lines repeated across pages removed; chunks ≤ size with overlap | REQ-RAG-01 | U |
-| AC-24 | Every response | non-empty `trace` and `request_id` | REQ-ORC-02 | U |
+## Orchestration & knowledge
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-30 | Compound request: in-scope part answered + partial refusal | ORC-02 | U, L |
+| AC-31 | Low confidence → clarifying question; second miss → escalation | ORC-03 | U |
+| AC-32 | KB miss → Getnet web search; web miss → handoff `no_grounded_answer` | ORC-04 | U |
+| AC-33 | Reviewer flags inconsistent Support answer → one revision | ORC-05 | U |
+| AC-34 | Agent exception → handoff `agent_failure`, request still returns 200 | ORC-04 | U |
+| AC-35 | BM25 ranks the named product's page first; multi-query merges results | KNW-03 | U, E |
+
+## Engineering
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-40 | Trace order and token usage present in every response | OBS-01 | U |
+| AC-41 | `/metrics` counts requests, handoffs by reason, flags; latency quantiles | OBS-02 | U |
+| AC-42 | Idempotent replay; reused key with a different body → 422 | API-02 | U |
+| AC-43 | Eval report with routing/tool/refusal/retrieval/judge metrics; gate exits non-zero below thresholds | EVAL-02 | E |
+
+## Full rubric coverage
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-50 | `GET /` serves the console; it logs in with a dev token, chats, shows trace/sources/tools, and runs the operator loop | UI-01 | U (served), manual (demo) |
+| AC-51 | A FAQ question and its answer land in the same chunk; every chunk starts with its page title | KNW-04 | U |
+| AC-52 | Re-ranker reorders BM25 candidates; on re-ranker failure BM25 order is kept | KNW-05 | U |
+| AC-53 | Re-ingesting unchanged pages stores nothing new; changed chunks replaced | KNW-06 | U |
+| AC-54 | Slow tool → `tool_timeout`; outage on the primary model → one retry on the fallback | RES-01 | U |
+| AC-55 | Spans emitted for planner/agents/tools/LLM when tracing is enabled | OBS-03 | U |
+| AC-56 | Repeated query hits the retrieval cache | OBS-04 | U |
+| AC-57 | Eval report includes judge agreement on the calibration set | EVAL-03 | E |

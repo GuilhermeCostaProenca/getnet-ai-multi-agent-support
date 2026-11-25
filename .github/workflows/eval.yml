@@ -1,0 +1,22 @@
+name: eval (real model)
+# Manual quality gate against the real model; needs ANTHROPIC_API_KEY and JWT_SECRET repository secrets.
+on: workflow_dispatch
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m app.rag.ingest
+      - run: python scripts/evaluate.py --repeats 2 --gate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: eval/report.*

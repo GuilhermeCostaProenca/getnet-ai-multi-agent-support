@@ -1,16 +1,14 @@
 services:
   api:
     build: .
-    image: getnet-multi-agent-support:1.0.0
     ports:
       - "8000:8000"
-    env_file:
-      - .env
+    env_file: .env
     environment:
-      CHROMA_PATH: /app/data/chroma
+      DATABASE_PATH: /app/data/getnet.db
+      ENABLE_DEV_TOKENS: "true"   # demo console; disable in production
     volumes:
-      - kb-data:/app/data
-    restart: unless-stopped
+      - getnet-v3-data:/app/data
 
 volumes:
-  kb-data:
+  getnet-v3-data:

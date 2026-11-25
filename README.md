@@ -1,221 +1,136 @@
-# Getnet Multi-Agent Support System
+# Getnet Multi-Agent Support System — v3
 
-A containerized multi-agent customer-support service for Getnet merchants. A **Router Agent** classifies every message and orchestrates a **Knowledge Agent** (RAG over Getnet's websites + web search), a **Customer Support Agent** (tool calling over customer data) and a **Human Escalation Agent**, behind layered guardrails.
+A multi-agent assistant for Getnet merchants: it answers product questions from Getnet's official pages (RAG),
+general questions from the web, and account questions with tools over the authenticated merchant's (simulated) data —
+with identity, memory, human oversight, evaluation and observability built in. v3 was rebuilt from an empty workspace
+in a 60-minute window, driven by the v1 evaluation (7.3/10), using **Claude** as the only LLM provider.
 
-Built with **Spec-Driven Development**: the specs in [`specs/`](specs/) were written and committed before any code, and every acceptance criterion maps to a test.
 
-| | |
+## What changed since v1 (evaluation gap → v3 → evidence)
+
+| v1 gap (score) | v3 | Evidence |
+|---|---|---|
+| **Security & Identity (5.5)**: `user_id` from the payload | JWT HS256 (issuer + expiry) on every endpoint; identity = token `sub`; body `user_id` must match (403); roles merchant/operator; per-identity rate limit; tools get the identity from the server, never from the LLM; prompt-injection screen; PII (card/Luhn, CPF, secrets) redacted before storage/LLM and in answers | AC-10..14 |
+| **Memory (1.5)**: stateless | `conversation_id`, SQLite persistence (survives restarts), history window + persisted rolling summary, follow-ups resolved from history, owner check (404) | AC-20..22 |
+| **Human oversight (4.0)**: in-memory ticket | Persistent tickets with context; conversation **paused** (no LLM call) while a human owns it; operator API claim → reply → resolve; agents resume with the outcome; explicit "talk to a human"; **approval gate**: receivables advance is only a request for a human | AC-23..26 |
+| **Orchestration ("plan-once")** | Structured multi-task plan; compound requests answered in part (partial refusal); clarify before escalating; observe → replan (KB → Getnet-restricted web → human); reviewer → one bounded revision; parallel tasks; agent failure → handoff, never a 500 | AC-30..34 |
+| **RAG (8.2)** | FAQ-aware chunking (question + answer together, page title on every chunk); content-hash incremental ingestion; BM25 multi-query (Portuguese rewrite + original) with product-page boost; **Claude re-ranking**; abstention; citations | AC-35, AC-51..53 |
+| **Evaluation (7.7)** | 38 deterministic tests in CI; live acceptance suite; labelled dataset + harness (routing EN/PT, tools, refusal P/R, pass^k, Recall@K/MRR, LLM judge **with calibration**, latency, tokens) and regression gate | AC-43, AC-57 |
+| **Observability & cost (6.5)** | Per-request trace and token usage; JSON logs; `/metrics` (Prometheus); **OpenTelemetry** spans; retrieval **cache**; per-tool timeout; fallback model on outages | AC-40, 41, 54..56 |
+| **Production (7.5)** | Versioned API (`/v1`), idempotency keys, lean non-root image with healthcheck, CI | AC-42 |
+| **Demo** | **Web console at `/`**: chat, per-answer "x-ray" (agents, intents, tools, sources, flags, tokens, latency, trace) and the operator view | AC-50 |
+
+## Measured results (final code, 2026-11-25)
+
+| Check | Result |
 |---|---|
-| Stack | Python 3.12 · FastAPI · Pydantic · OpenAI (`gpt-5.4-mini`, `text-embedding-3-small`, `web_search`, `omni-moderation-latest`) · ChromaDB · BeautifulSoup · Pytest · Docker |
-| Agents | Router · Knowledge · Customer Support · Human Escalation (bonus) |
-| Guardrails | intent allowlist · prompt-injection block · PII redaction (Luhn/CPF) · moderation · tool authorization · grounding threshold · confidence-based handoff |
+| Deterministic suite (`pytest`, fake LLM, CI on every push) | **38 passed** |
+| Live acceptance (`pytest -m integration`, real Claude: challenge scenarios, crediário 48x, refusals, follow-up, compound, approval gate) | **12 / 12** |
+| Eval — 25 labelled cases (EN, PT, adversarial, compound) × 2 runs = 50 real requests ([eval/report.md](eval/report.md)) | routing **1.0** (EN 1.0 / PT 1.0) · tool accuracy **1.0** · refusal precision/recall **1.0 / 1.0** · pass^2 **1.0** · 0 unexpected handoffs · gate passed |
+| LLM judge (same 50 answers) | answers the question **1.0** · right language **1.0** · KB answers grounded in the excerpts used **0.95** · score **4.84 / 5** · judge agreement on the calibration set **1.0** |
+| Retrieval (BM25 on the raw message, before rewrite/re-rank) | Recall@1 0.556 · Recall@3 0.889 · Recall@5 **1.0** · MRR 0.713 |
+| Cost / latency (`claude-opus-5-5`, effort low) | ~10.4k tokens per request · p50 7.6 s · p95 13.5 s |
+| Container (`docker compose up --build`) | image **299 MB**; startup ingestion 19 pages / 117 chunks; console 200; chat without token 401; receivables advance → ticket `approval_required` → paused turn with **0 LLM calls** → operator claim/reply/resolve; `/metrics` counts handoffs by reason |
+| Console (browser) | chat answer with sources and x-ray panel (agents, intents, tokens, trace); operator view shows the pending approval (`executed: false`) |
 
----
+**How the eval was made trustworthy.** The first judge runs graded grounding against the wrong context: a fresh
+search of the raw message (grounded 0.18), then whole cited pages truncated at 16k characters (0.38). The knowledge
+agent now records the exact excerpts it grounded on (per request, like the token meter) and the judge grades against
+those: 0.95. The judge itself is checked on answers with a known verdict (correct, wrong limit, wrong language,
+invented fee, non-answer, correct refusal) and agreed on all of them.
 
-## 1. Quick start
+**Trade-offs visible in the numbers.** BM25 alone puts the gold page first only about half the time; query rewriting,
+the product-page boost and Claude re-ranking close the gap (answers are grounded 0.95). Latency and tokens are the
+price of Opus with re-ranking and a reviewer; `LLM_MODEL`, `RERANK_ENABLED` and the reviewer are the levers.
 
-**Requirements:** Docker (with Compose) and an OpenAI API key.
 
-```bash
-cp .env.example .env          # then set OPENAI_API_KEY
-docker compose up --build
-```
-
-On first start the service ingests the Getnet pages into Chroma (≈ 20–40 s, persisted in the `kb-data` volume). Then:
-
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "When will the money from yesterday'"'"'s sales be deposited?", "user_id": "cliente1988"}'
-```
-
-- Health: `GET http://localhost:8000/health` → `{"status":"ok","knowledge_base_chunks":N}`
-- Interactive docs (OpenAPI): `http://localhost:8000/docs`
-- Run all challenge scenarios + adversarial cases: `python scripts/run_scenarios.py`
-
-### Run locally without Docker
+## Quick start
 
 ```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-python -m app.rag.ingest --reset                  # optional: startup ingests automatically when empty
-uvicorn app.main:app --reload
+cp .env.example .env          # set ANTHROPIC_API_KEY and JWT_SECRET (long random string)
+docker compose up --build     # first start ingests the Getnet pages (~30 s)
+open http://localhost:8000    # web console (dev tokens are enabled in compose for the demo)
 ```
 
-### Configuration (environment variables)
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `OPENAI_API_KEY` | — (required) | OpenAI credentials |
-| `CHAT_MODEL` | `gpt-5.4-mini` | Router / agents model |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | RAG embeddings |
-| `MODERATION_MODEL` | `omni-moderation-latest` | Safety classifier |
-| `CHROMA_PATH` | `./data/chroma` | Vector store location |
-| `AUTO_INGEST` | `true` | Ingest on startup when the collection is empty |
-| `RAG_TOP_K` / `RAG_MIN_SIMILARITY` | `8` / `0.30` | Retrieval depth and grounding threshold |
-| `ROUTER_MIN_CONFIDENCE` | `0.55` | Below this → human handoff |
-| `MODERATION_ENABLED` | `true` | Toggle the moderation layer |
-
----
-
-## 2. Tests
+API docs at `/docs`. Without the console:
 
 ```bash
-pytest                    # 41 deterministic tests: fake LLM, in-memory store, no network, no key
-pytest -m integration     # real OpenAI + ingested KB: the 10 challenge scenarios + an out-of-scope case
+TOKEN=$(curl -s -X POST localhost:8000/v1/auth/dev-token -H 'content-type: application/json' \
+  -d '{"user_id":"cliente1988"}' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+curl -s localhost:8000/v1/chat -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"message":"Em quantas parcelas posso vender no crediário?"}'
 ```
 
-| Layer | What it proves | Files |
+Local development: `python -m venv .venv && pip install -r requirements-dev.txt && python -m app.rag.ingest && uvicorn app.main:app`.
+
+## Architecture
+
+```
+client ──JWT──▶ FastAPI  (/v1/chat · /v1/conversations · /v1/operator/* · /metrics · /health · console at /)
+                  │ auth · rate limit · idempotency
+                  ▼
+             Orchestrator — per-conversation state machine: active ⇄ awaiting_human
+  input guardrails → memory (window + summary) → Planner (structured Plan)
+     ├─ unsafe / model refusal ──────▶ policy refusal
+     ├─ wants_human / ambiguity ─────▶ Escalation ──▶ ticket (SQLite) ──▶ Operator API ──▶ resume
+     └─ tasks in parallel ─┬─ product_knowledge ▶ Knowledge: BM25 → Claude re-rank → grounded answer
+                           │                       → (miss) Getnet-only web search → (miss) human
+                           ├─ general_info ─────▶ Knowledge: Claude web search with sources
+                           ├─ customer_support ─▶ Support: tool loop → reviewer → approval gate
+                           └─ out_of_scope ─────▶ partial refusal
+  compose → output guardrail → persist → metrics · logs · spans → response (answer, sources, tools, handoff, trace, usage)
+```
+
+| Agent | Role | Output contract |
 |---|---|---|
-| Unit — guardrails | Luhn / CPF validation, redaction, injection patterns (EN/PT), no false positives on plain numbers | `tests/test_guardrails.py` |
-| Unit — tools | settlement-date rules (Pix D+0, debit D+1 business day, credit D+30 per installment), São Paulo business date (not server UTC), decline codes, terminal diagnosis, MOCK labeling, authorization binding | `tests/test_customer_tools.py` |
-| Unit — LLM client | web-search source parsing (cited URLs vs. consulted sources / data APIs) with the SDK stubbed | `tests/test_llm_client.py` |
-| Unit — RAG | HTML cleaning, cross-page boilerplate removal, chunk size/overlap | `tests/test_ingest.py` |
-| Orchestration | routing per intent, agent sequence (KB → Support), refusals without specialist calls, PII never reaches the LLM, low confidence / no grounding / LLM failure → handoff, moderation fail-open, trace | `tests/test_orchestrator.py` |
-| API contract | response schema, 422 validation, health | `tests/test_api.py` |
-| Integration | real routing, tool use and sources for the challenge scenarios | `tests/integration/test_scenarios.py` |
+| **Planner (router)** | Splits the message into tasks with intents from an allow-list, resolves references from history, writes a Portuguese retrieval query, decides clarification / human request | `Plan` (JSON schema) |
+| **Knowledge** | RAG over Getnet's pages, Claude re-ranking, grounded answer with citations; Getnet-restricted web replan; general web search | `KnowledgeAnswer`, sources |
+| **Customer Support** | Tool loop over the merchant's data, reviewer + one revision, approval gate | answer, tool calls, pending actions |
+| **Escalation** | Ticket with context, pauses the conversation, operator workflow | ticket |
 
-Test names carry acceptance-criteria ids (`test_ac15_tools_bound_to_payload_user`), giving traceability **requirement → spec → code → test** (see [`specs/04-acceptance-criteria.md`](specs/04-acceptance-criteria.md)).
+### Tools (simulated data, labelled `MOCK`)
+`get_merchant_profile` · `get_sales_and_settlements` (business days in America/Sao_Paulo) · `diagnose_terminal`
+(connectivity + decline-code meaning) · `request_receivables_advance` (validates, **never executes**: opens a human
+approval). The identity is bound server-side and every call runs under a 5 s deadline.
 
-**Strategy for comprehensive integration testing of the orchestration.** The orchestrator depends only on the `LLMClient` and `KnowledgeStore` protocols, so the same workflow is tested at three levels: (1) deterministic contract tests with a scripted fake LLM that asserts *which* agents/tools were called and *what* reached the LLM; (2) live tests against the real model and KB that assert routing, tool selection and grounding signals (not exact wording, since output is non-deterministic); (3) an evaluation dataset (`scripts/run_scenarios.py`, extensible to a labeled JSONL) to track intent accuracy, tool-selection accuracy, grounding rate, refusal precision/recall and latency across prompt/model changes, run in CI as a regression gate.
+### Key decisions (full list in [specs/02-architecture.md](specs/02-architecture.md))
+- **Claude only** (`claude-opus-5-5`, JSON-schema structured outputs, `effort: low`): one provider, validated contracts.
+  A provider refusal (`stop_reason=refusal`) becomes the `unsafe` policy, never an escalation.
+- **BM25 instead of embeddings**: the provider has no embeddings API; BM25 is explainable and dependency-free (image
+  ~300 MB). Its weakness on paraphrases is mitigated by the planner's Portuguese rewrite, multi-query merge, the
+  product-page boost and Claude re-ranking.
+- **Safety without a moderation endpoint**: regex injection screen + PII redaction before the model, `unsafe` intent,
+  refusal mapping, output PII guard.
+- **Custom orchestrator** instead of a framework: explicit state machine, every branch tested with a fake LLM.
+- **SQLite** for conversations, tickets, idempotency and chunks: zero-ops; Postgres in production.
 
----
+## Configuration
+See [.env.example](.env.example): `ANTHROPIC_API_KEY`, `LLM_MODEL`, `FALLBACK_MODEL`, `JWT_SECRET`,
+`ENABLE_DEV_TOKENS`, `RATE_LIMIT_PER_MINUTE`, `RERANK_ENABLED`, `OTEL_ENABLED` / `OTEL_ENDPOINT`, `DATABASE_PATH`.
 
-## 3. Architecture
-
+## Testing and evaluation
+```bash
+pytest                                   # deterministic suite (fake LLM), runs in CI on every push
+pytest -m integration                    # live acceptance tests against Claude
+python scripts/evaluate.py --repeats 2 --gate   # labelled eval → eval/report.md, exits 1 below thresholds
 ```
-            POST /chat {message, user_id}
-                        │
-                ┌───────▼────────┐
-                │  Orchestrator  │  request_id · trace · structured log
-                └───────┬────────┘
-   1 input guardrails (deterministic: injection, PII redaction)
-   2 moderation (omni-moderation, fails open)
-                        │
-                ┌───────▼────────┐
-                │  Router Agent  │  structured output: intent, confidence,
-                └───────┬────────┘  language, consult_kb, retrieval_query
-     ┌──────────────┬───┴────────────┬──────────────────┬───────────────┐
-product_knowledge general_info  customer_support   out_of_scope/unsafe  low confidence
-     │              │                │                   │               │
- Knowledge (RAG) Knowledge (web)  [Knowledge.retrieve]  policy refusal  Escalation
-     │              │                ▼                   (no LLM)        Agent
-     │              │           Support Agent ── tools ── mock customer data
-     └──────────────┴────────┬───────┘
-          no grounding / failure ──► Escalation Agent (handoff ticket)
-                             ▼
-               ChatResponse (answer, agent, sources, tools_used, handoff, guardrails, trace)
-```
+Specs → code → tests are traceable: requirement IDs in [specs/01-requirements.md](specs/01-requirements.md),
+acceptance criteria in [specs/04-acceptance-criteria.md](specs/04-acceptance-criteria.md), and test names cite them.
 
-### Agents
+## Observability
+Every response carries `trace` (steps with durations), `usage` (LLM calls and tokens) and guardrail flags; logs are
+JSON; `/metrics` exposes requests per agent, planned tasks, handoffs by reason, guardrail flags, tokens and latency
+p50/p95; OpenTelemetry spans (request → steps → LLM calls → tools) are exported over OTLP when `OTEL_ENABLED=true`.
 
-| Agent | Responsibility | How |
-|---|---|---|
-| **Router** (`app/agents/router.py`) | Entry point; decides the agent or sequence | One LLM call with **strict JSON-schema output** (`RouteDecision`). Also rewrites the query into Portuguese (`retrieval_query`) because the knowledge base is in Portuguese and users may write in English. |
-| **Knowledge** (`app/agents/knowledge.py`) | Product questions via RAG; general facts via web search | Retrieval + grounded generation with numbered citations; OpenAI native `web_search` tool with URL citations. |
-| **Customer Support** (`app/agents/support.py`) | Resolve merchant issues with their data | Tool-calling loop (max 4 rounds) over 3 tools; can receive KB excerpts from the Knowledge Agent (agent sequence). |
-| **Human Escalation** (`app/agents/escalation.py`) | Handoff when the system can't resolve confidently | Creates a ticket in an in-memory queue (**mock**; production would publish to a ticketing/contact-center system). |
+## Limitations
+- Customer data is simulated (no Getnet backend); the advance is never executed.
+- BM25 is weaker than dense retrieval on paraphrases; re-ranking and query rewriting mitigate it.
+- The LLM judge is Claude itself; its agreement on a small calibration set is reported, but it is not calibrated
+  against a large human-labelled set.
+- Dev tokens exist only for the demo console; production would use the company's identity provider.
 
-**Communication mechanism:** direct, synchronous function calls mediated by the orchestrator, with Pydantic contracts (`RouteDecision`, `AgentResult`). Agents never call each other, so each is unit-testable and the data flow lives in one place (`app/orchestrator.py`).
-
-### Support tools (`app/tools/customer_tools.py`)
-
-| Tool | Operation |
-|---|---|
-| `get_sales_and_settlements(days_back)` | Lists sales and **computes** each installment's expected deposit date (Pix D+0, debit D+1 business day, credit D+30 per installment, or D+1 with automatic advance) and status. |
-| `diagnose_terminal(terminal_id, error_code)` | Diagnoses connectivity / signal / firmware and explains decline codes (05, 14, 51, 54, 55, 57, 91) with recommended actions. |
-| `get_merchant_profile()` | Plan, masked bank account, settlement rules, terminals. |
-
-> **Data disclosure:** there is no Getnet backend integration. Customer records are **simulated** (`cliente1988`, `cliente2000`) and every tool output carries `data_source: "MOCK - simulated data..."`; the agent tells the user the data is simulated.
-
-**Authorization (GR-AUTHZ-01):** the LLM-facing tool schemas have **no `user_id` parameter**; the server binds the `user_id` of the request payload when executing a tool and drops any `user_id` the model tries to pass. Asking "show the sales of cliente2000" can never return another merchant's data (defense against IDOR via prompt).
-
----
-
-## 4. RAG pipeline
-
-| Stage | Implementation |
-|---|---|
-| **Sources** | `app/rag/sources.py`: 18 curated pages. The example questions (Get Clássica/Smart, crediário, Pix) live on the Brazilian site **site.getnet.com.br** (the site whose title is the link text in the challenge), with `/duvidas/` (≈ 50k chars FAQ) as the densest source; `getnet.net/en` adds the global corporate view. The BR page sitemap returns an error, hence the curated list. |
-| **Ingestion** | `httpx` fetch (pages are server-rendered WordPress, no headless browser needed). |
-| **Cleaning** | BeautifulSoup drops `head/script/style/nav/header/footer/form`; lines repeated in ≥ 50 % of pages (menus, "Já é cliente?" modal) are removed so they don't dominate retrieval. |
-| **Chunking** | Paragraph-aware, ~1000 chars with 150-char overlap; metadata `url`, `title`, `chunk_index`. |
-| **Storage** | Embeddings via `text-embedding-3-small` stored in a persistent Chroma collection (cosine). Chroma's default local embedding model is never used. |
-| **Retrieval** | Query rewriting to Portuguese by the router → top-k (8) → filter by `RAG_MIN_SIMILARITY`. |
-| **Generation** | Grounded prompt: answer only from numbered context, cite `[n]`, say when the answer is not in the context. Structured output (`KnowledgeAnswer`) includes a self-check `answered_from_context`. **No relevant chunk → no generation call**, and **related chunks that don't answer → `answered_from_context=false`**: both hand off to a human (anti-hallucination). Verified on real runs: legitimate questions 0/6 handoffs, non-existent products 4/4 handoffs. |
-
----
-
-## 5. Guardrails (defense in depth)
-
-The key design choice: scope is an **allowlist of intents**, not a blocklist of topics. Two official scenarios (weather, euro rate) are off-topic but legitimate, so the criterion is the *type* of request: **answering questions is allowed; executing unrelated work (math homework, writing code, essays) is not** — the "use the support bot as a free coding assistant" problem.
-
-| Layer | Cost | Catches |
-|---|---|---|
-| Pydantic validation | 0 | malformed / oversized input (422) |
-| Deterministic checks (`app/guardrails.py`) | ~0 ms, no LLM | prompt injection (EN/PT patterns) → blocked before any LLM call; card numbers (Luhn-valid), CPF (check digits), passwords → redacted **before** LLM and logs, user warned |
-| Moderation model | ~0.4 s | fraud / harmful content; fails open (logged) because the router also classifies `unsafe` |
-| Router allowlist | part of routing call | `out_of_scope` and `unsafe` → deterministic policy refusal (no generation) |
-| Tool authorization | 0 | cross-customer data access |
-| Grounding threshold | 0 | answers not supported by Getnet content |
-| Confidence threshold | 0 | ambiguous requests → human handoff |
-| Failure handling | 0 | any LLM/agent exception → handoff answer, never a stack trace |
-
-Note: the router's self-reported confidence is **not a calibrated probability**; it is used only as a heuristic signal, combined with the retrieval threshold and handoff.
-
----
-
-## 6. Observability, evaluation and production monitoring
-
-**Implemented:** every response includes `request_id` and a `trace` (step, decision, duration); every request emits one structured JSON log line (`intent`, `agent`, `confidence`, `tools`, `sources`, `handoff`, guardrail `flags`, `latency_ms`, redacted message).
-
-**Production plan (not implemented):**
-- **Traces:** OpenTelemetry spans per agent/tool/LLM call (tokens, cost, latency) exported to Datadog/Grafana Tempo or LangSmith/Langfuse.
-- **Dashboards:** intent distribution, handoff rate, refusal rate, p50/p95 latency per agent, tool error rate, no-grounding rate, LLM cost per conversation.
-- **Alerts:** handoff or no-grounding rate spikes (KB drift or site change), moderation-unavailable, p95 latency, LLM error rate.
-- **Evaluation:** labeled dataset (challenge scenarios + adversarial set) run in CI on every prompt/model change: intent accuracy, tool-selection accuracy, citation presence, refusal precision/recall (over-blocking is also a failure), plus LLM-as-judge for faithfulness to retrieved context; online sampling of production conversations for human review.
-- **KB freshness:** scheduled re-ingestion with content hashing to only re-embed changed pages.
-
----
-
-## 7. Design decisions and trade-offs
-
-See [`specs/02-architecture.md`](specs/02-architecture.md) (ADR-01…08). Highlights:
-- **Custom orchestrator over LangGraph:** one routing step plus an optional sequence doesn't need a graph runtime; plain typed functions are easier to test and explain. LangGraph would pay off with cycles, checkpoints or long-running conversational state.
-- **Single provider (OpenAI) behind `LLMClient`:** one key covers chat, structured output, embeddings, web search and moderation; swapping providers is an implementation of one protocol.
-- **Deterministic refusals:** policy messages are templates, not generations: predictable, free, and impossible to jailbreak into a different answer.
-
-## 8. Limitations and next steps
-
-- Customer data and the handoff queue are **mock / in-memory** (no Getnet APIs available).
-- No conversation memory: each request is stateless (next step: session store keyed by `user_id`).
-- `user_id` is trusted from the payload; production must derive it from authentication (JWT) instead.
-- Web answers list the URLs the model cited; when the provider answers from a data API without citations (weather), `sources` reports what the search consulted (e.g. `api:oai-weather`) instead of a URL.
-- Settlement dates skip weekends but not Brazilian bank holidays (mock rule).
-- Mixed requests ("Get Smart fee + write a poem") are refused as a whole (conservative scope policy); competitor comparisons are out of scope. A finer policy would answer the in-scope part only.
-- `/health` reports `degraded` when the KB is empty; ingestion is retried only on restart (next step: background retry).
-- KB coverage is limited to the curated pages; answers outside them correctly trigger handoff.
-- Ingestion upserts chunks by `url#index`: if a page shrinks, stale chunks remain until `python -m app.rag.ingest --reset` (or `docker compose down -v`). Next step: content hashing and per-URL replacement.
-- Next: streaming responses, rate limiting per user, OpenTelemetry, re-ranking (cross-encoder) and hybrid search (BM25 + vectors), evaluation in CI.
-
-## 9. How AI tools were used
-
-Development used **Claude Code** as a pair programmer under the candidate's direction: SDD specs were written first and committed (`docs(specs)` commit precedes all code), then the implementation was generated module by module against those specs, executed and verified (unit tests, real ingestion, real API calls for every scenario). Inside the product, LLM tools are used for structured routing, tool calling, grounded generation, query rewriting, web search and moderation.
-
-## Project layout
-
-```
-app/
-  main.py            FastAPI app, wiring, startup ingestion
-  orchestrator.py    workflow, data flow, trace, structured log
-  schemas.py         API + agent contracts
-  guardrails.py      deterministic input guardrails
-  llm.py             LLMClient protocol + OpenAI implementation
-  observability.py   JSON logging
-  agents/            router · knowledge · support · escalation · policy
-  tools/             customer support tools (mock data)
-  rag/               sources · ingest · store
-specs/               requirements · architecture · API contract · acceptance criteria
-tests/               unit/API (fake LLM) + integration (real LLM)
-scripts/             run_scenarios.py
-```
+## Timebox and AI usage
+Window 15:33:23 → 16:33:23 on 2026-11-25 (work finished at 16:06, ~33 min), from an empty workspace (`bbad6b1`); specs were committed before any code
+(`01916b3`, `a91b6ed`). Development used **Claude Code** as a pair programmer under my direction: I set the goals,
+priorities and constraints, reviewed and verified every step; inside the product, Claude does planning, re-ranking,
+grounded generation, tool calling, review and web search.

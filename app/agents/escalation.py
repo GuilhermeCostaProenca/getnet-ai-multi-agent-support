@@ -1,47 +1,54 @@
-"""Human Escalation Agent (REQ-ESC-01, bonus).
+"""Escalation agent and operator workflow (HITL-01..03): persistent tickets with context, paused conversations,
+claim → reply → resolve, then the agents resume with the human outcome in history."""
 
-Opens a handoff ticket in an in-memory queue. In production this would publish to a
-ticketing system / contact-center queue; here the queue is a MOCK, stated in the answer.
-"""
+from typing import Any
 
-import threading
-import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-
-from app.schemas import AgentResult, Handoff
-
-_MESSAGES = {
-    "pt": "Não consegui resolver isso com segurança por aqui, então encaminhei sua solicitação para um "
-    "especialista humano (protocolo {ticket}, fila simulada). Se preferir, fale com a Getnet pelo "
-    "4002-4000 ou 4003-4000 (capitais e regiões metropolitanas).",
-    "en": "I couldn't resolve this confidently, so I forwarded your request to a human specialist "
-    "(ticket {ticket}, simulated queue). You can also reach Getnet at 4002-4000 or 4003-4000 (capitals and metro areas).",
-}
+from app.storage import Conflict, NotFound, Store
 
 
-@dataclass
-class Ticket:
-    ticket_id: str
-    user_id: str
-    reason: str
-    summary: str
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+class HandoffService:
+    def __init__(self, store: Store):
+        self._store = store
 
+    def escalate(self, cid: str, user_id: str, reason: str, language: str, details: dict[str, Any]) -> str:
+        active = self._store.active_ticket(cid)
+        if active:
+            return active["id"]
+        recent = [{"role": m["role"], "content": m["content"][:400]} for m in self._store.messages(cid)[-8:]]
+        tid = self._store.create_ticket(cid, user_id, reason,
+                                        {"reason": reason, "language": language, "recent_messages": recent, **details})
+        self._store.update_conversation(cid, status="awaiting_human")
+        return tid
 
-class EscalationAgent:
-    def __init__(self) -> None:
-        self._queue: list[Ticket] = []
-        self._lock = threading.Lock()
+    def list(self, status: str | None) -> list[dict[str, Any]]:
+        return self._store.list_tickets(status)
 
-    @property
-    def queue(self) -> list[Ticket]:
-        return list(self._queue)
+    def _ticket(self, tid: str) -> dict[str, Any]:
+        ticket = self._store.get_ticket(tid)
+        if ticket is None:
+            raise NotFound(tid)
+        return ticket
 
-    def escalate(self, user_id: str, message: str, reason: str, language: str | None) -> tuple[AgentResult, Handoff]:
-        ticket = Ticket(ticket_id=f"HO-{uuid.uuid4().hex[:8].upper()}", user_id=user_id, reason=reason, summary=message[:300])
-        with self._lock:
-            self._queue.append(ticket)
-        template = _MESSAGES["pt" if (language or "").startswith("pt") else "en"]
-        result = AgentResult(agent="escalation", answer=template.format(ticket=ticket.ticket_id))
-        return result, Handoff(required=True, ticket_id=ticket.ticket_id, reason=reason)
+    def claim(self, tid: str, operator: str) -> dict[str, Any]:
+        ticket = self._ticket(tid)
+        if ticket["status"] != "open":
+            raise Conflict(f"ticket is {ticket['status']}")
+        self._store.update_ticket(tid, status="claimed", operator_id=operator)
+        return self._ticket(tid)
+
+    def reply(self, tid: str, operator: str, message: str) -> dict[str, Any]:
+        ticket = self._ticket(tid)
+        if ticket["status"] != "claimed" or ticket["operator_id"] != operator:
+            raise Conflict("claim the ticket first")
+        self._store.add_message(ticket["conversation_id"], "operator", message, agent=operator)
+        return ticket
+
+    def resolve(self, tid: str, operator: str, resolution: str) -> dict[str, Any]:
+        ticket = self._ticket(tid)
+        if ticket["status"] not in ("open", "claimed"):
+            raise Conflict(f"ticket is {ticket['status']}")
+        self._store.update_ticket(tid, status="resolved", operator_id=operator, resolution=resolution)
+        self._store.add_message(ticket["conversation_id"], "system",
+                                f"Human support closed ticket {tid}: {resolution}", agent="escalation")
+        self._store.update_conversation(ticket["conversation_id"], status="active", clarifications=0)
+        return self._ticket(tid)
