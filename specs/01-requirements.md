@@ -48,3 +48,16 @@ Source: the challenge statement + the v1 evaluation (7.3/10). IDs are referenced
 | OBS-01 | Per-request trace (steps with durations), token usage, structured JSON logs. | partial |
 | OBS-02 | `GET /metrics` (Prometheus text): requests by agent, handoffs by reason, guardrail flags, tokens, latency p50/p95. | none |
 | API-02 | `Idempotency-Key` on `POST /v1/chat` replays the stored response (24 h); same key + different body → 422. | — |
+
+## Full coverage of the v1 rubric (items left open in earlier attempts)
+| ID | Requirement | Rubric item |
+|---|---|---|
+| UI-01 | **Web console at `/`**: merchant chat (conversation memory), per-answer panel (agents, intents, tools, sources, guardrail flags, tokens, latency, trace), handoff state, and an **operator view** (queue, claim, reply, resolve). Uses dev tokens only. | demo / A |
+| KNW-04 | **FAQ-aware chunking**: question/answer pairs kept together; page title prefixed to every chunk. | C3 |
+| KNW-05 | **Re-ranking**: BM25 candidates (top 20) re-ranked by Claude before generation (configurable). | C6 |
+| KNW-06 | **Incremental ingestion**: chunk ids are content hashes; unchanged chunks are skipped, removed ones deleted. | C9 |
+| RES-01 | **Per-tool timeout** (`tool_timeout` result) and **fallback model** on outage-type errors (connection/timeout/5xx). | D6, F5 |
+| OBS-03 | **OpenTelemetry** spans for request → planner → agents → tools → LLM calls (OTLP exporter when configured, no-op otherwise). | I3 |
+| OBS-04 | **Cache**: retrieval results cached per query (LRU) to save repeated work. | I7 |
+| EVAL-03 | **Judge calibration**: the judge is meta-evaluated on known-good and known-bad answers; its agreement rate is reported next to the judge scores. | H6 |
+| OPS-02 | Lean image (no vector DB / ML runtime), non-root, healthcheck. | J5 |

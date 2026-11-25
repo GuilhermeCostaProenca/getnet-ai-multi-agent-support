@@ -49,3 +49,15 @@ Test type: **U** = deterministic (fake LLM, CI) · **L** = live (real Claude, `p
 | AC-41 | `/metrics` counts requests, handoffs by reason, flags; latency quantiles | OBS-02 | U |
 | AC-42 | Idempotent replay; reused key with a different body → 422 | API-02 | U |
 | AC-43 | Eval report with routing/tool/refusal/retrieval/judge metrics; gate exits non-zero below thresholds | EVAL-02 | E |
+
+## Full rubric coverage
+| AC | Criterion | Req | Test |
+|---|---|---|---|
+| AC-50 | `GET /` serves the console; it logs in with a dev token, chats, shows trace/sources/tools, and runs the operator loop | UI-01 | U (served), manual (demo) |
+| AC-51 | A FAQ question and its answer land in the same chunk; every chunk starts with its page title | KNW-04 | U |
+| AC-52 | Re-ranker reorders BM25 candidates; on re-ranker failure BM25 order is kept | KNW-05 | U |
+| AC-53 | Re-ingesting unchanged pages stores nothing new; changed chunks replaced | KNW-06 | U |
+| AC-54 | Slow tool → `tool_timeout`; outage on the primary model → one retry on the fallback | RES-01 | U |
+| AC-55 | Spans emitted for planner/agents/tools/LLM when tracing is enabled | OBS-03 | U |
+| AC-56 | Repeated query hits the retrieval cache | OBS-04 | U |
+| AC-57 | Eval report includes judge agreement on the calibration set | EVAL-03 | E |

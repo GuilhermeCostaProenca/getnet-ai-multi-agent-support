@@ -38,3 +38,6 @@ client ──JWT──▶ FastAPI (/v1/chat, /v1/conversations, /v1/operator/*, 
 | ADR-08 | Web search via Claude's server tool; Getnet questions replan to a site-restricted search | Fresh, cited answers; bounded to one replan. |
 | ADR-09 | Evaluation = labelled JSONL + harness + LLM judge + regression gate; deterministic suite in CI | Measures routing, tools, refusals, retrieval, consistency; the judge is a signal, not ground truth. |
 | ADR-10 | Simulated customer data labelled `MOCK` | No real backend; never presented as real customer data. |
+| ADR-11 | Console = one static HTML/JS page served by FastAPI | No build step or extra container; talks to the same public API (no backdoor). |
+| ADR-12 | Re-ranking with Claude over BM25 candidates | Recovers paraphrase matches BM25 misses; costs one LLM call per KB question; falls back to BM25 order on error. |
+| ADR-13 | OpenTelemetry API with optional OTLP exporter | Standard spans without forcing a collector; no-op when not configured. |
