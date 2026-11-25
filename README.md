@@ -130,7 +130,7 @@ p50/p95; OpenTelemetry spans (request → steps → LLM calls → tools) are exp
 - Dev tokens exist only for the demo console; production would use the company's identity provider.
 
 ## Timebox and AI usage
-Window 15:33:23 → 16:33:23 on 2026-11-25, from an empty workspace (`bbad6b1`); specs were committed before any code
+Window 15:33:23 → 16:33:23 on 2026-11-25 (work finished at 16:06, ~33 min), from an empty workspace (`bbad6b1`); specs were committed before any code
 (`01916b3`, `a91b6ed`). Development used **Claude Code** as a pair programmer under my direction: I set the goals,
 priorities and constraints, reviewed and verified every step; inside the product, Claude does planning, re-ranking,
 grounded generation, tool calling, review and web search.
